@@ -1,0 +1,89 @@
+# Dependencies
+node_modules
+
+# Build
+dist
+build
+*.zip
+*.tgz
+*.tar.gz
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+*.env
+backend/.env
+backend/.env.local
+backend/.env.local.admin
+
+# Keys and secrets (local-only)
+docs/keys.md
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Database (local)
+*.db
+*.sqlite
+*.sqlite3
+
+# Test coverage
+coverage
+.nyc_output
+
+# Deploy
+frontend-dist.tar.gz
+backend-deploy.tar.gz
+backend-dist.tar.gz
+vlgn-*.zip
+vlgn-*.tgz
+
+# Local data
+_local_data/
+
+# Local agent / workspace helpers
+.claude/
+.continue/
+.windsurf/
+AGENTS.md
+CLAUDE.md
+_archive_bin/
+_deploy/
+_handoff/
+_live_sync/
+_safe/
+test-results/
+
+# Local outputs / reports
+backup*.sh
+check*.sql
+check_*.py
+commit-info.txt
+fix-*.md
+fix-*.mjs
+fix-server.js
+integrated-output.txt
+move_junk.ps1
+public_apply_data_check.txt
+public_apply_test.txt
+remote_*.txt
+test-result.txt
+tmp_*.sh
+avatar-chatbot.jpg
+ui-tham-khao.png
+
+# TypeScript incremental build
+*.tsbuildinfo
+.vercel

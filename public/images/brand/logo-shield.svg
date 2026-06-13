@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Shield logo">
+  <defs>
+    <linearGradient id="navyGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0B2A63"/>
+      <stop offset="100%" stop-color="#06255A"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="none"/>
+  <path d="M256 54 C317 99 381 115 430 118 L430 260 C430 372 349 445 256 493 C163 445 82 372 82 260 L82 118 C131 115 195 99 256 54 Z" fill="url(#navyGrad)"/>
+  <path d="M340 111 L430 115 L430 214 L360 197 Z" fill="#FF7A00"/>
+  <path d="M175 214 C212 201 241 186 256 178 C305 206 346 219 416 231 L408 264 C319 253 282 231 256 215 C230 230 196 246 170 258 Z" fill="#FFFFFF"/>
+  <path d="M193 219 L257 190 L257 388 L225 422 L193 388 L204 253 L193 258 Z" fill="#FFFFFF"/>
+</svg>

@@ -1,0 +1,21 @@
+{
+  "name": "viec-lam-gan-nha-backend",
+  "version": "0.1.0",
+  "description": "Backend API cho ViecLamGanNha - Nhận đơn ứng tuyển và gửi Telegram",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "node-telegram-bot-api": "^0.66.0",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7",
+    "zod": "^3.24.1"
+  }
+}

@@ -1,0 +1,225 @@
+# CLERK LOGIN IMPLEMENTATION PLAN
+## ViecLamGanNha - Phase Clerk Integration
+
+---
+
+## 1. MỤC TIÊU CLERK LOGIN
+
+### Đối tượng đăng nhập
+- **Nhà tuyển dụng / Công ty**: Bắt buộc đăng nhập để sử dụng dashboard
+- **Ứng viên / Người tìm việc**: KHÔNG bắt buộc đăng nhập
+  - Chỉ điền form ứng tuyển nhanh (họ tên, SĐT, khu vực)
+  - Không cần tạo tài khoản
+
+### Chức năng sau đăng nhập (Công ty)
+- Xem dashboard tổng quan
+- Quản lý tin tuyển dụng
+- Xem danh sách ứng viên đã ứng tuyển
+- Xem gói dịch vụ đang dùng
+- Cài đặt thông tin công ty
+
+---
+
+## 2. ROUTES CẦN BẢO VỆ (Protected Routes)
+
+| Route | Mô tả | Yêu cầu |
+|-------|-------|---------|
+| `/nha-tuyen-dung` | Dashboard chính | Đăng nhập bắt buộc |
+| `/nha-tuyen-dung/tin-tuyen-dung` | Quản lý tin đăng | Đăng nhập bắt buộc |
+| `/nha-tuyen-dung/ung-vien` | Xem ứng viên | Đăng nhập bắt buộc |
+| `/nha-tuyen-dung/goi-dich-vu` | Thông tin gói dịch vụ | Đăng nhập bắt buộc |
+| `/nha-tuyen-dung/cai-dat` | Cài đặt tài khoản | Đăng nhập bắt buộc |
+
+### Public Routes (không cần login)
+- `/` - Trang chủ
+- `/viec-lam` - Danh sách việc làm
+- `/viec-lam/:slug` - Chi tiết tin tuyển dụng
+- `/viec-lam/:slug/ung-tuyen` - Form ứng tuyển (nếu có)
+
+---
+
+## 3. ENV CLERK DỰ KIẾN
+
+### Frontend (.env)
+```env
+VITE_CLERK_PUBLISHABLE_KEY=pk_test_... (hoặc pk_live_...)
+```
+
+### Backend (.env)
+```env
+CLERK_SECRET_KEY=sk_test_... (hoặc sk_live_...)
+CLERK_WEBHOOK_SECRET=whsec_...
+```
+
+### Lấy keys từ:
+- https://dashboard.clerk.com/
+- Tạo application mới
+- Copy Publishable Key (frontend)
+- Copy Secret Key (backend)
+- Tạo Webhook endpoint để lấy Webhook Secret
+
+---
+
+## 4. QUY TẮC HIỂN THỊ PUBLIC
+
+### Bắt buộc tuân thủ:
+```
+❌ KHÔNG hiển thị: "Công ty TNHH ABC"
+✅ CHỈ hiển thị: "CTY012 - MT004"
+```
+
+### Áp dụng cho:
+- Trang chủ (`/`)
+- Trang tìm kiếm (`/viec-lam`)
+- Trang chi tiết (`/viec-lam/:slug`)
+- Job cards trên mọi trang public
+
+### Tên công ty thật chỉ hiển thị khi:
+- Đã đăng nhập vào dashboard công ty
+- Admin nội bộ xem trong hệ thống quản lý
+- Backend xử lý (database, Telegram)
+
+---
+
+## 5. PHASE TRIỂN KHAI
+
+### Phase Clerk 01: Basic Setup
+**Mục tiêu:** Có login UI hoạt động
+
+- [ ] Cài đặt `@clerk/clerk-react` frontend
+- [ ] Cài đặt `@clerk/clerk-sdk-node` backend
+- [ ] Bọc App với ClerkProvider
+- [ ] Tạo trang login `/dang-nhap`
+- [ ] Tạo trang register `/dang-ky`
+- [ ] Bọc protected routes với SignedIn/SignedOut
+- [ ] Header hiển thị UserButton khi đã login
+- [ ] Chưa làm phân quyền phức tạp
+
+### Phase Clerk 02: Company Mapping
+**Mục tiêu:** Mỗi công ty chỉ xem dữ liệu của mình
+
+- [ ] Tạo bảng `companies` trong database
+- [ ] Tạo bảng `company_users` mapping clerk_user_id -> company_code
+- [ ] Middleware backend verify Clerk JWT
+- [ ] API `/api/apply` thêm xác thực cho company endpoints
+- [ ] Query ứng viên chỉ theo company_code của user đang login
+- [ ] Query tin tuyển dụng chỉ theo company_code của user đang login
+- [ ] Không cho phép xem/sửa dữ liệu công ty khác
+
+### Phase Clerk 03: Advanced Features
+**Mục tiêu:** Quản lý vai trò và webhook
+
+- [ ] Setup Clerk Webhook endpoint `/api/webhooks/clerk`
+- [ ] Xử lý events: user.created, user.updated, user.deleted
+- [ ] Mapping user_id -> company_code khi user đăng ký
+- [ ] Phân quyền: admin, company_owner, company_staff
+- [ ] Admin: xem tất cả công ty
+- [ ] Company Owner: quản lý công ty mình, thêm staff
+- [ ] Company Staff: chỉ xem, không đăng tin
+
+---
+
+## 6. COMPONENTS CẦN TẠO
+
+### Clerk UI Components
+```tsx
+// SignIn.tsx - Trang đăng nhập
+import { SignIn } from '@clerk/clerk-react';
+
+// SignUp.tsx - Trang đăng ký
+import { SignUp } from '@clerk/clerk-react';
+
+// ProtectedRoute.tsx - Bảo vệ route
+import { useAuth } from '@clerk/clerk-react';
+import { Navigate } from 'react-router-dom';
+
+// UserButton.tsx - Hiển thị trong Header
+import { UserButton } from '@clerk/clerk-react';
+```
+
+### Custom Components
+```tsx
+// EmployerDashboard.tsx - Dashboard sau login
+// CompanyProfile.tsx - Thông tin công ty
+// JobManagement.tsx - Quản lý tin đăng
+// CandidateList.tsx - Danh sách ứng viên
+// ServicePackage.tsx - Thông tin gói dịch vụ
+```
+
+---
+
+## 7. API INTEGRATION
+
+### Backend Middleware
+```javascript
+// middleware/auth.js
+import { ClerkExpressRequireAuth } from '@clerk/clerk-sdk-node';
+
+export const requireAuth = ClerkExpressRequireAuth();
+```
+
+### Protected API Routes
+```javascript
+// routes/company.js
+import { requireAuth } from '../middleware/auth.js';
+
+router.get('/dashboard', requireAuth, getDashboard);
+router.get('/candidates', requireAuth, getCompanyCandidates);
+router.get('/jobs', requireAuth, getCompanyJobs);
+```
+
+### Get Current User
+```javascript
+// Lấy user từ Clerk
+const { userId } = req.auth;
+
+// Lookup company_code từ userId
+const company = await db.getCompanyByUserId(userId);
+```
+
+---
+
+## 8. LƯU Ý BẢO MẬT
+
+- Clerk Publishable Key: An toàn để expose trong frontend
+- Clerk Secret Key: CHỈ đặt trong backend .env
+- Clerk Webhook Secret: CHỈ đặt trong backend .env
+- KHÔNG bao giờ commit keys thật
+- Sử dụng `docs/keys.md` local-only để lưu keys
+
+---
+
+## 9. TESTING CHECKLIST
+
+### Phase 01 Test
+- [ ] Truy cập `/nha-tuyen-dung` khi chưa login → Redirect login
+- [ ] Login thành công → Vào dashboard
+- [ ] Header hiển thị UserButton
+- [ ] Logout → Về trang chủ
+
+### Phase 02 Test
+- [ ] User A (CTY012) xem được ứng viên CTY012
+- [ ] User A KHÔNG xem được ứng viên CTY015
+- [ ] API trả 403 nếu truy cập data công ty khác
+
+### Phase 03 Test
+- [ ] Webhook nhận event user.created
+- [ ] Mapping user mới với company_code
+- [ ] Phân quyền đúng theo role
+
+---
+
+## 10. TÀI LIỆU THAM KHẢO
+
+- Clerk React SDK: https://clerk.com/docs/references/react/overview
+- Clerk Node SDK: https://clerk.com/docs/references/nodejs/overview
+- Clerk Dashboard: https://dashboard.clerk.com/
+- Webhook Guide: https://clerk.com/docs/integrations/webhooks
+
+---
+
+## GHI CHÚ
+
+- Hiện tại (Backend Phase 01): Chưa tích hợp Clerk thật
+- Đây chỉ là plan chuẩn bị cho phase tiếp theo
+- Clerk integration sẽ là Phase tiếp theo sau khi có keys thật

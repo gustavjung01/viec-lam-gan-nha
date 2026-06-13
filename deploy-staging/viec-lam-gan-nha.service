@@ -1,0 +1,17 @@
+[Unit]
+Description=Viec Lam Gan Nha Backend
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/var/www/viec-lam-gan-nha/backend
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=10
+Environment=NODE_ENV=production
+Environment=PORT=3001
+Environment=DATABASE_PATH=/var/www/viec-lam-gan-nha/data/applications.db
+
+[Install]
+WantedBy=multi-user.target
