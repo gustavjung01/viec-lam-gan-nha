@@ -1,0 +1,52 @@
+{
+  "name": "VIECLAMGANNHA.COM - Việc làm gần nhà",
+  "short_name": "Việc Gần Nhà",
+  "description": "Tìm việc làm bảo vệ và lao động phổ thông gần nhà. Ứng tuyển nhanh theo khu vực.",
+  "id": "/?app=viec-lam-gan-nha",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#0B2A63",
+  "lang": "vi-VN",
+  "dir": "ltr",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/images/brand/logo-shield.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Tìm việc gần nhà",
+      "short_name": "Tìm việc",
+      "description": "Mở nhanh danh sách việc làm",
+      "url": "/?source=pwa-shortcut#jobs",
+      "icons": [
+        {
+          "src": "/images/brand/logo-shield.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "Đăng tin tuyển dụng",
+      "short_name": "Tuyển dụng",
+      "description": "Mở khu vực công ty tuyển dụng",
+      "url": "/company?source=pwa-shortcut",
+      "icons": [
+        {
+          "src": "/images/brand/logo-shield.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    }
+  ]
+}
