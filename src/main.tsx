@@ -7,6 +7,7 @@ import './lib/aiInlineResultModalBridge';
 import './lib/companyLeadWorkflowBridge';
 import './lib/adminLeadWorkflowBridge';
 import './lib/adminLeadHistoryBridge';
+import { registerPwaServiceWorker } from './lib/pwaRegistration';
 import { RoleProvider } from './contexts/RoleContext';
 
 const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
@@ -32,3 +33,5 @@ if (!publishableKey) {
     </React.StrictMode>
   );
 }
+
+registerPwaServiceWorker();
