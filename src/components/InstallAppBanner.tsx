@@ -24,6 +24,7 @@ export function InstallAppBanner() {
   const [dismissed, setDismissed] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [inlineMessage, setInlineMessage] = useState('');
 
   const device = useMemo(() => {
     if (typeof window === 'undefined') return 'other';
@@ -42,6 +43,7 @@ export function InstallAppBanner() {
     const handleBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
       setInstallPrompt(event as BeforeInstallPromptEvent);
+      setInlineMessage('');
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -60,14 +62,26 @@ export function InstallAppBanner() {
   };
 
   const handleInstallClick = async () => {
-    if (device === 'android' && installPrompt) {
+    setInlineMessage('');
+
+    if (device === 'ios') {
+      setShowGuide(true);
+      return;
+    }
+
+    if (installPrompt) {
       await installPrompt.prompt();
       await installPrompt.userChoice.catch(() => undefined);
       setInstallPrompt(null);
       return;
     }
 
-    setShowGuide(true);
+    if (device === 'android') {
+      setInlineMessage('Nếu chưa hiện cửa sổ cài app, hãy mở bằng Chrome rồi bấm Tải app lại.');
+      return;
+    }
+
+    setInlineMessage('Tính năng cài app hoạt động tốt nhất trên điện thoại. Trên máy tính hãy dùng menu trình duyệt để cài nếu được hỗ trợ.');
   };
 
   return (
@@ -78,6 +92,7 @@ export function InstallAppBanner() {
           <div className="min-w-0 flex-1">
             <p className="text-sm font-bold text-brand-navy">Tải app Việc Gần Nhà</p>
             <p className="text-xs text-slate-600">Mở nhanh như app, nhận bản mới tự động sau khi cập nhật.</p>
+            {inlineMessage && <p className="mt-1 text-[11px] font-semibold text-orange-700">{inlineMessage}</p>}
           </div>
           <button
             type="button"
@@ -97,7 +112,7 @@ export function InstallAppBanner() {
         </div>
       </div>
 
-      {showGuide && (
+      {device === 'ios' && showGuide && (
         <div className="fixed inset-0 z-[90] bg-slate-950/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="mx-auto flex h-full max-h-[92vh] max-w-lg flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
             <div className="flex items-start gap-3 border-b border-slate-100 p-5">
