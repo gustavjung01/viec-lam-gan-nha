@@ -1,5 +1,6 @@
-const PWA_UPDATE_CHECK_INTERVAL_MS = 30 * 60 * 1000;
+const LAST_BUILD_SIGNATURE_KEY = 'vlgn:last-build-signature';
 const BUILD_INFO_URL = '/build-info.json';
+const UPDATE_INTERVAL_MS = 60_000;
 
 type BuildInfo = {
   commit?: string;
@@ -7,111 +8,147 @@ type BuildInfo = {
   indexAsset?: string | null;
 };
 
-let initialBuildSignature: string | null = null;
-let reloadingForNewBuild = false;
-
-function isStandalonePwa() {
-  return window.matchMedia('(display-mode: standalone)').matches ||
-    // iOS Safari exposes navigator.standalone only after Add to Home Screen.
-    Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
-}
-
-function notifyServiceWorkerToActivate(worker: ServiceWorker | null) {
-  if (!worker) return;
-  worker.postMessage({ type: 'SKIP_WAITING' });
-}
-
 function getBuildSignature(info: BuildInfo) {
-  return [info.commit || 'unknown', info.buildTime || 'unknown', info.indexAsset || 'unknown'].join('|');
+  return [info.commit || 'unknown', info.buildTime || 'unknown'].join(':');
+}
+
+function readStoredSignature() {
+  try {
+    return window.localStorage.getItem(LAST_BUILD_SIGNATURE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredSignature(signature: string) {
+  try {
+    window.localStorage.setItem(LAST_BUILD_SIGNATURE_KEY, signature);
+  } catch {
+    // Local storage can be blocked in private browsing modes.
+  }
 }
 
 async function fetchBuildInfo(): Promise<BuildInfo | null> {
   try {
     const response = await fetch(`${BUILD_INFO_URL}?t=${Date.now()}`, {
       cache: 'no-store',
-      headers: { 'Cache-Control': 'no-cache' },
+      credentials: 'same-origin',
     });
-    if (!response.ok) return null;
-    return await response.json();
+    if (!response.ok) {
+      return null;
+    }
+    return (await response.json()) as BuildInfo;
   } catch {
     return null;
   }
 }
 
-async function checkForNewBuild() {
-  const info = await fetchBuildInfo();
-  if (!info) return;
-
-  const signature = getBuildSignature(info);
-  if (!initialBuildSignature) {
-    initialBuildSignature = signature;
-    return;
-  }
-
-  if (signature !== initialBuildSignature && !reloadingForNewBuild) {
-    reloadingForNewBuild = true;
-
-    const registration = await navigator.serviceWorker.getRegistration('/');
-    if (registration?.waiting) {
-      notifyServiceWorkerToActivate(registration.waiting);
-      return;
-    }
-
-    window.location.reload();
+async function notifyWaitingWorker(registration: ServiceWorkerRegistration) {
+  if (registration.waiting) {
+    registration.waiting.postMessage({ type: 'SKIP_WAITING' });
   }
 }
 
 export function registerPwaServiceWorker() {
-  if (!('serviceWorker' in navigator)) return;
+  if (!('serviceWorker' in navigator)) {
+    return;
+  }
 
-  let refreshing = false;
+  let updateTimer: number | undefined;
+  let reloadPending = false;
 
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (refreshing) return;
-    refreshing = true;
-    window.location.reload();
-  });
-
-  navigator.serviceWorker.addEventListener('message', (event) => {
-    if (event.data?.type === 'PWA_UPDATED' && isStandalonePwa()) {
-      window.location.reload();
-    }
-  });
-
-  window.addEventListener('load', async () => {
+  const requestUpdate = async () => {
     try {
-      const registration = await navigator.serviceWorker.register('/sw.js', {
-        scope: '/',
-        updateViaCache: 'none',
-      });
-
-      registration.addEventListener('updatefound', () => {
-        const worker = registration.installing;
-        if (!worker) return;
-
-        worker.addEventListener('statechange', () => {
-          if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-            notifyServiceWorkerToActivate(worker);
-          }
-        });
-      });
-
+      const registration = await navigator.serviceWorker.getRegistration('/');
+      if (!registration) {
+        return;
+      }
       await registration.update();
-      await checkForNewBuild();
+      await notifyWaitingWorker(registration);
+    } catch {
+      // Ignore transient update failures; the next interval will retry.
+    }
+  };
 
-      window.setInterval(() => {
-        registration.update().catch(() => undefined);
-        checkForNewBuild().catch(() => undefined);
-      }, PWA_UPDATE_CHECK_INTERVAL_MS);
+  const checkForNewBuild = async () => {
+    const info = await fetchBuildInfo();
+    if (!info) {
+      return;
+    }
 
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') {
-          registration.update().catch(() => undefined);
-          checkForNewBuild().catch(() => undefined);
+    const signature = getBuildSignature(info);
+    const previousSignature = readStoredSignature();
+
+    if (previousSignature && previousSignature !== signature) {
+      await requestUpdate();
+    }
+
+    if (previousSignature !== signature) {
+      writeStoredSignature(signature);
+    }
+  };
+
+  const scheduleChecks = async () => {
+    const registration = await navigator.serviceWorker.register('/sw.js', {
+      scope: '/',
+      updateViaCache: 'none',
+    });
+
+    registration.addEventListener('updatefound', () => {
+      const installingWorker = registration.installing;
+      if (!installingWorker) {
+        return;
+      }
+
+      installingWorker.addEventListener('statechange', () => {
+        if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+          void notifyWaitingWorker(registration);
         }
       });
-    } catch (error) {
-      console.warn('[PWA] Service worker registration failed:', error);
+    });
+
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloadPending) {
+        return;
+      }
+      reloadPending = true;
+      window.location.reload();
+    });
+
+    await checkForNewBuild();
+
+    updateTimer = window.setInterval(() => {
+      void checkForNewBuild();
+    }, UPDATE_INTERVAL_MS);
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
+      void checkForNewBuild();
+    });
+
+    window.addEventListener('pageshow', () => {
+      registration.update().catch(() => undefined);
+      checkForNewBuild().catch(() => undefined);
+    });
+  };
+
+  if (document.readyState === 'complete') {
+    void scheduleChecks().catch(() => undefined);
+  } else {
+    window.addEventListener(
+      'load',
+      () => {
+        void scheduleChecks().catch(() => undefined);
+      },
+      { once: true }
+    );
+  }
+
+  window.addEventListener('beforeunload', () => {
+    if (updateTimer) {
+      window.clearInterval(updateTimer);
     }
   });
 }
