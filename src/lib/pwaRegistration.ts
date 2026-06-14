@@ -70,7 +70,7 @@ export function registerPwaServiceWorker() {
     }
   };
 
-  const checkBuildInfo = async () => {
+  const checkForNewBuild = async () => {
     const info = await fetchBuildInfo();
     if (!info) {
       return;
@@ -115,11 +115,23 @@ export function registerPwaServiceWorker() {
       window.location.reload();
     });
 
-    await checkBuildInfo();
+    await checkForNewBuild();
 
     updateTimer = window.setInterval(() => {
-      void checkBuildInfo();
+      void checkForNewBuild();
     }, UPDATE_INTERVAL_MS);
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
+      void checkForNewBuild();
+    });
+
+    window.addEventListener('pageshow', () => {
+      registration.update().catch(() => undefined);
+      checkForNewBuild().catch(() => undefined);
+    });
   };
 
   if (document.readyState === 'complete') {
