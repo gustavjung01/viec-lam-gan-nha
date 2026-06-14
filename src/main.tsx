@@ -12,13 +12,12 @@ import { RoleProvider } from './contexts/RoleContext';
 
 const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
-
 if (!publishableKey) {
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <div style={{ padding: 24, fontFamily: 'sans-serif' }}>
-        <h1>Thiáº¿u cáº¥u hÃ¬nh Clerk</h1>
-        <p>Vui lÃ²ng thÃªm VITE_CLERK_PUBLISHABLE_KEY vÃ o .env.local rá»“i restart npm run dev.</p>
+        <h1>Thiếu cấu hình Clerk</h1>
+        <p>Vui lòng thêm VITE_CLERK_PUBLISHABLE_KEY vào .env.local rồi restart npm run dev.</p>
       </div>
     </React.StrictMode>
   );
