@@ -8,9 +8,11 @@ import './lib/companyLeadWorkflowBridge';
 import './lib/adminLeadWorkflowBridge';
 import './lib/adminLeadHistoryBridge';
 import { RoleProvider } from './contexts/RoleContext';
+import { registerPwaServiceWorker } from './lib/pwaRegistration';
 
 const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
+registerPwaServiceWorker();
 
 if (!publishableKey) {
   ReactDOM.createRoot(document.getElementById('root')!).render(
