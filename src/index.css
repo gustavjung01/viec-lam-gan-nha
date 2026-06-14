@@ -46,3 +46,55 @@ select,
 textarea {
   font: inherit;
 }
+
+@supports (padding-top: env(safe-area-inset-top)) {
+  header.sticky.top-0 {
+    padding-top: env(safe-area-inset-top);
+  }
+}
+
+@media (max-width: 390px) {
+  header.sticky.top-0 > div {
+    min-height: 64px;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  header.sticky.top-0 a[href="/"] {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  header.sticky.top-0 a[href="/"] img {
+    width: 2.25rem;
+    height: 2.25rem;
+    flex-shrink: 0;
+  }
+
+  header.sticky.top-0 a[href="/"] > div {
+    min-width: 0;
+  }
+
+  header.sticky.top-0 a[href="/"] > div > div:first-child {
+    max-width: calc(100vw - 8.75rem);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 1rem;
+    line-height: 1.2;
+  }
+
+  header.sticky.top-0 a[href="/"] > div > div:nth-child(2) {
+    max-width: calc(100vw - 8.75rem);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  header.sticky.top-0 button[aria-label="Mở menu"] {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    border-radius: 1rem;
+    background: rgb(255 255 255 / 0.1);
+  }
+}
