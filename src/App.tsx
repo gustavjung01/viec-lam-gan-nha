@@ -1,6 +1,7 @@
 import { useLocation, BrowserRouter, Route, Routes } from 'react-router-dom';
 import { Footer } from './components/Footer';
 import { Header } from './components/Header';
+import { InstallAppBanner } from './components/InstallAppBanner';
 import { EmployerLandingPage } from './pages/EmployerLandingPage';
 import { HomePage } from './pages/HomePage';
 import { JobDetailPage } from './pages/JobDetailPage';
@@ -59,6 +60,7 @@ function AppContent() {
         <Route path="/admin/reports" element={<AdminConsolePage />} />
       </Routes>
       <Footer />
+      <InstallAppBanner />
       {!hideChatbot && <Chatbot />}
     </div>
   );
