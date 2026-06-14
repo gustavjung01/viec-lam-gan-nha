@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, User, X, LogOut } from 'lucide-react';
+import { Bell, Menu, User, X, LogOut } from 'lucide-react';
 import { SignedIn, SignedOut, UserButton, useClerk, useAuth } from '@clerk/clerk-react';
 import { siteConfig } from '../config/site';
 import { ASSETS } from '../config/assets';
@@ -18,7 +18,6 @@ export function Header() {
   const isAdminPage = location.pathname.startsWith('/admin');
   const showAdminBell = Boolean(isAdminPage && adminSessionToken);
 
-  // Kiểm tra trạng thái CTV và Company khi đăng nhập
   useEffect(() => {
     if (!isSignedIn || !userId) {
       setCtvStatus(null);
@@ -30,7 +29,6 @@ export function Header() {
       try {
         const token = await getToken();
 
-        // Check CTV status
         const ctvRes = await fetch(`/api/ctv/by-clerk/${userId}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -39,7 +37,6 @@ export function Header() {
           setCtvStatus(ctvData.data.status);
         }
 
-        // Check Company status
         const companyRes = await fetch(`/api/company/by-clerk/${userId}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -68,20 +65,17 @@ export function Header() {
     };
   }, [location.pathname]);
 
-  // Menu items động dựa trên trạng thái
   const getMenuItems = () => {
     const items = [
       { to: '/viec-lam', label: 'Việc làm' },
     ];
 
-    // Company: Nếu đã active → vào dashboard, nếu chưa → landing
     if (companyStatus === 'active' || companyStatus === 'pending') {
       items.push({ to: '/company/dashboard', label: 'Dashboard Công ty' });
     } else {
       items.push({ to: '/nha-tuyen-dung', label: 'Dành cho công ty' });
     }
 
-    // CTV: Nếu đã active → vào dashboard, nếu chưa → landing
     if (ctvStatus === 'active' || ctvStatus === 'pending') {
       items.push({ to: '/ctv/dashboard', label: 'Dashboard CTV' });
     } else {
@@ -95,20 +89,22 @@ export function Header() {
   const menuItems = getMenuItems();
 
   return (
-    <header className="sticky top-0 z-40 border-b border-white/10 bg-brand-navy text-white shadow-lg shadow-slate-900/10">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 md:px-6">
-        <Link to="/" className="flex items-center gap-3">
+    <header className="sticky top-0 z-40 border-b border-white/10 bg-brand-navy pt-[env(safe-area-inset-top)] text-white shadow-lg shadow-slate-900/10">
+      <div className="mx-auto flex min-h-[64px] max-w-7xl items-center justify-between gap-2 px-3 py-2 md:px-6 md:py-3">
+        <Link to="/" className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 lg:flex-none">
           <img
             src={ASSETS.logo}
             alt="Vieclamgannha"
-            className="h-10 w-10 rounded-2xl object-contain bg-white/10 p-1 ring-1 ring-white/15"
+            className="h-10 w-10 shrink-0 rounded-2xl object-contain bg-white/10 p-1 ring-1 ring-white/15"
             onError={(e) => {
               e.currentTarget.style.display = 'none';
             }}
           />
-          <div>
-            <div className="font-extrabold tracking-tight">{siteConfig.brand}</div>
-            <div className="text-xs text-slate-300">{siteConfig.tagline}</div>
+          <div className="min-w-0">
+            <div className="max-w-[calc(100vw-9.25rem)] truncate text-lg font-extrabold leading-tight tracking-tight sm:max-w-none sm:text-xl">
+              {siteConfig.brand}
+            </div>
+            <div className="hidden truncate text-xs text-slate-300 min-[390px]:block">{siteConfig.tagline}</div>
           </div>
         </Link>
 
@@ -149,13 +145,24 @@ export function Header() {
           </SignedIn>
         </div>
 
-        <button
-          className="rounded-xl p-2 hover:bg-white/10 lg:hidden"
-          aria-label="Mở menu"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-        >
-          {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-        </button>
+        <div className="flex shrink-0 items-center gap-2 lg:hidden">
+          <SignedOut>
+            <Link
+              to="/tai-khoan"
+              aria-label="Đăng nhập để xem thông báo"
+              className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-white ring-1 ring-white/10 active:scale-95"
+            >
+              <Bell className="h-5 w-5" />
+            </Link>
+          </SignedOut>
+          <button
+            className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/10 active:scale-95"
+            aria-label="Mở menu"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          >
+            {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </button>
+        </div>
       </div>
 
       {showAdminBell && <AdminNotificationBell variant="floating" />}
@@ -165,7 +172,6 @@ export function Header() {
         </SignedIn>
       )}
 
-      {/* Mobile menu */}
       {mobileMenuOpen && (
         <div className="border-t border-white/10 bg-brand-navy px-4 py-4 lg:hidden">
           <nav className="flex flex-col gap-2">
