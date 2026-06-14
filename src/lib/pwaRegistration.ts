@@ -1,6 +1,7 @@
 const LAST_BUILD_SIGNATURE_KEY = 'vlgn:last-build-signature';
 const BUILD_INFO_URL = '/build-info.json';
 const UPDATE_INTERVAL_MS = 60_000;
+const RELOAD_AFTER_UPDATE_MS = 1200;
 
 type BuildInfo = {
   commit?: string;
@@ -9,7 +10,7 @@ type BuildInfo = {
 };
 
 function getBuildSignature(info: BuildInfo) {
-  return [info.commit || 'unknown', info.buildTime || 'unknown'].join(':');
+  return [info.commit || 'unknown', info.buildTime || 'unknown', info.indexAsset || 'unknown'].join(':');
 }
 
 function readStoredSignature() {
@@ -33,6 +34,7 @@ async function fetchBuildInfo(): Promise<BuildInfo | null> {
     const response = await fetch(`${BUILD_INFO_URL}?t=${Date.now()}`, {
       cache: 'no-store',
       credentials: 'same-origin',
+      headers: { 'Cache-Control': 'no-cache' },
     });
     if (!response.ok) {
       return null;
@@ -57,6 +59,14 @@ export function registerPwaServiceWorker() {
   let updateTimer: number | undefined;
   let reloadPending = false;
 
+  const safeReload = () => {
+    if (reloadPending) {
+      return;
+    }
+    reloadPending = true;
+    window.location.reload();
+  };
+
   const requestUpdate = async () => {
     try {
       const registration = await navigator.serviceWorker.getRegistration('/');
@@ -80,7 +90,10 @@ export function registerPwaServiceWorker() {
     const previousSignature = readStoredSignature();
 
     if (previousSignature && previousSignature !== signature) {
+      writeStoredSignature(signature);
       await requestUpdate();
+      window.setTimeout(safeReload, RELOAD_AFTER_UPDATE_MS);
+      return;
     }
 
     if (previousSignature !== signature) {
@@ -107,14 +120,9 @@ export function registerPwaServiceWorker() {
       });
     });
 
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (reloadPending) {
-        return;
-      }
-      reloadPending = true;
-      window.location.reload();
-    });
+    navigator.serviceWorker.addEventListener('controllerchange', safeReload);
 
+    await registration.update();
     await checkForNewBuild();
 
     updateTimer = window.setInterval(() => {
