@@ -1,12 +1,31 @@
-/*
- * VIECLAMGANNHA.COM PWA Service Worker
- * Mục tiêu: cài được tạm như app trên Android/iPhone và tự nhận bản mới sau deploy.
- */
+const CACHE_VERSION = 'vlgn-static-v1';
+const RUNTIME_CACHE = 'vlgn-runtime-v1';
+const STATIC_ASSETS = ['/', '/index.html', '/manifest.webmanifest', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/maskable-512.png'];
+const API_PREFIX = '/api/';
 
-const CACHE_PREFIX = 'vlgn-pwa';
-const STATIC_FALLBACK_CACHE = `${CACHE_PREFIX}-fallback`;
-const APP_SHELL = ['/', '/manifest.webmanifest', '/images/brand/logo-shield.svg'];
-const NEVER_CACHE_PATHS = ['/api/', '/build-info.json'];
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    (async () => {
+      const cache = await caches.open(CACHE_VERSION);
+      await cache.addAll(STATIC_ASSETS);
+      await self.skipWaiting();
+    })()
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    (async () => {
+      const cacheNames = await caches.keys();
+      await Promise.all(
+        cacheNames
+          .filter((cacheName) => cacheName !== CACHE_VERSION && cacheName !== RUNTIME_CACHE)
+          .map((cacheName) => caches.delete(cacheName))
+      );
+      await self.clients.claim();
+    })()
+  );
+});
 
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
@@ -14,84 +33,25 @@ self.addEventListener('message', (event) => {
   }
 });
 
-async function getBuildVersion() {
-  try {
-    const response = await fetch('/build-info.json', { cache: 'no-store' });
-    if (!response.ok) throw new Error('build-info unavailable');
-    const info = await response.json();
-    return info.commit || info.buildTime || 'unknown';
-  } catch (error) {
-    return 'dev';
-  }
-}
-
-async function getRuntimeCacheName() {
-  const version = await getBuildVersion();
-  return `${CACHE_PREFIX}-${version}`;
-}
-
-self.addEventListener('install', (event) => {
-  event.waitUntil((async () => {
-    const cacheName = await getRuntimeCacheName();
-    const cache = await caches.open(cacheName);
-    await cache.addAll(APP_SHELL);
-    await self.skipWaiting();
-  })());
-});
-
-self.addEventListener('activate', (event) => {
-  event.waitUntil((async () => {
-    const activeCache = await getRuntimeCacheName();
-    const keys = await caches.keys();
-    await Promise.all(
-      keys
-        .filter((key) => key.startsWith(CACHE_PREFIX) && key !== activeCache && key !== STATIC_FALLBACK_CACHE)
-        .map((key) => caches.delete(key))
-    );
-    await self.clients.claim();
-    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    clients.forEach((client) => client.postMessage({ type: 'PWA_UPDATED' }));
-  })());
-});
-
-function shouldBypassCache(request) {
-  const url = new URL(request.url);
-  if (request.method !== 'GET') return true;
-  if (url.origin !== self.location.origin) return true;
-  return NEVER_CACHE_PATHS.some((path) => url.pathname.startsWith(path));
-}
-
-async function networkFirst(request) {
-  const cacheName = await getRuntimeCacheName();
-  const cache = await caches.open(cacheName);
-  try {
-    const fresh = await fetch(request);
-    if (fresh && fresh.ok) {
-      cache.put(request, fresh.clone());
-    }
-    return fresh;
-  } catch (error) {
-    const cached = await cache.match(request);
-    return cached || cache.match('/');
-  }
-}
-
-async function cacheFirst(request) {
-  const cacheName = await getRuntimeCacheName();
-  const cache = await caches.open(cacheName);
-  const cached = await cache.match(request);
-  if (cached) return cached;
-
-  const fresh = await fetch(request);
-  if (fresh && fresh.ok) {
-    cache.put(request, fresh.clone());
-  }
-  return fresh;
-}
-
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  if (shouldBypassCache(request)) return;
+  if (request.method !== 'GET') {
+    return;
+  }
+
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
+  if (url.pathname.startsWith(API_PREFIX)) {
+    return;
+  }
+
+  if (url.pathname === '/build-info.json') {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   if (request.mode === 'navigate') {
     event.respondWith(networkFirst(request));
@@ -100,3 +60,34 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith(cacheFirst(request));
 });
+
+async function networkFirst(request) {
+  try {
+    const response = await fetch(request);
+    if (response && response.ok) {
+      const cache = await caches.open(RUNTIME_CACHE);
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    const cached = await caches.match(request);
+    if (cached) {
+      return cached;
+    }
+    return caches.match('/index.html');
+  }
+}
+
+async function cacheFirst(request) {
+  const cached = await caches.match(request);
+  if (cached) {
+    return cached;
+  }
+
+  const response = await fetch(request);
+  if (response && response.ok) {
+    const cache = await caches.open(RUNTIME_CACHE);
+    cache.put(request, response.clone());
+  }
+  return response;
+}
