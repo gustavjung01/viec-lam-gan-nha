@@ -98,3 +98,15 @@ textarea {
     background: rgb(255 255 255 / 0.1);
   }
 }
+
+@supports (top: calc(env(safe-area-inset-top) + 1rem)) {
+  @media (max-width: 767px) {
+    .fixed.right-4.top-20.z-\[70\].md\:hidden {
+      top: calc(env(safe-area-inset-top) + 5rem);
+    }
+
+    .fixed.right-3.top-32.z-\[75\] {
+      top: calc(env(safe-area-inset-top) + 8rem);
+    }
+  }
+}
