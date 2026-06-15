@@ -11,8 +11,10 @@ NGINX_ENABLED="${NGINX_ENABLED:-/etc/nginx/sites-enabled/viec-lam-gan-nha.conf}"
 DISABLE_OTHER_NGINX_SITES="${DISABLE_OTHER_NGINX_SITES:-1}"
 BACKEND_UPSTREAM="${BACKEND_UPSTREAM:-http://127.0.0.1:3001}"
 DOMAIN_NAMES="${DOMAIN_NAMES:-vieclamgannha.me www.vieclamgannha.me}"
-SSL_CERTIFICATE="${SSL_CERTIFICATE:-/etc/letsencrypt/live/vieclamgannha.me/fullchain.pem}"
-SSL_CERTIFICATE_KEY="${SSL_CERTIFICATE_KEY:-/etc/letsencrypt/live/vieclamgannha.me/privkey.pem}"
+SSL_CERTIFICATE="${SSL_CERTIFICATE:-}"
+SSL_CERTIFICATE_KEY="${SSL_CERTIFICATE_KEY:-}"
+PREFERRED_SSL_CERTIFICATE="/etc/letsencrypt/live/vieclamgannha.me/fullchain.pem"
+PREFERRED_SSL_CERTIFICATE_KEY="/etc/letsencrypt/live/vieclamgannha.me/privkey.pem"
 
 fail() {
   echo "[repair-vps-admin-frontend] $*" >&2
@@ -50,9 +52,57 @@ backup_untracked_blocker() {
   fi
 }
 
-write_nginx_config() {
+nginx_dump() {
+  sudo nginx -T 2>/dev/null || true
+}
+
+strip_semicolon() {
+  sed 's/[;[:space:]]*$//'
+}
+
+detect_ssl_certificate() {
+  if [ -n "${SSL_CERTIFICATE:-}" ] && [ -f "$SSL_CERTIFICATE" ]; then
+    printf '%s\n' "$SSL_CERTIFICATE"
+    return
+  fi
+
+  if [ -f "$PREFERRED_SSL_CERTIFICATE" ]; then
+    printf '%s\n' "$PREFERRED_SSL_CERTIFICATE"
+    return
+  fi
+
+  nginx_dump | awk '$1 == "ssl_certificate" && $2 !~ /key/ { print $2; exit }' | strip_semicolon
+}
+
+detect_ssl_certificate_key() {
+  if [ -n "${SSL_CERTIFICATE_KEY:-}" ] && [ -f "$SSL_CERTIFICATE_KEY" ]; then
+    printf '%s\n' "$SSL_CERTIFICATE_KEY"
+    return
+  fi
+
+  if [ -f "$PREFERRED_SSL_CERTIFICATE_KEY" ]; then
+    printf '%s\n' "$PREFERRED_SSL_CERTIFICATE_KEY"
+    return
+  fi
+
+  nginx_dump | awk '$1 == "ssl_certificate_key" { print $2; exit }' | strip_semicolon
+}
+
+resolve_ssl_paths() {
+  SSL_CERTIFICATE="$(detect_ssl_certificate)"
+  SSL_CERTIFICATE_KEY="$(detect_ssl_certificate_key)"
+
+  [ -n "$SSL_CERTIFICATE" ] || fail "Cannot detect ssl_certificate from current nginx config"
+  [ -n "$SSL_CERTIFICATE_KEY" ] || fail "Cannot detect ssl_certificate_key from current nginx config"
   [ -f "$SSL_CERTIFICATE" ] || fail "SSL certificate not found: $SSL_CERTIFICATE"
   [ -f "$SSL_CERTIFICATE_KEY" ] || fail "SSL certificate key not found: $SSL_CERTIFICATE_KEY"
+
+  echo "[repair-vps-admin-frontend] SSL certificate: $SSL_CERTIFICATE"
+  echo "[repair-vps-admin-frontend] SSL certificate key: $SSL_CERTIFICATE_KEY"
+}
+
+write_nginx_config() {
+  resolve_ssl_paths
 
   sudo mkdir -p "$(dirname "$NGINX_CONF")" "$(dirname "$NGINX_ENABLED")" /etc/nginx/disabled-sites
 
