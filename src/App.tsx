@@ -3,6 +3,7 @@ import { useLocation, BrowserRouter, Route, Routes } from 'react-router-dom';
 import { Footer } from './components/Footer';
 import { Header } from './components/Header';
 import { InstallAppBanner } from './components/InstallAppBanner';
+import UpdateBanner from './components/UpdateBanner';
 import { EmployerLandingPage } from './pages/EmployerLandingPage';
 import { HomePage } from './pages/HomePage';
 import { JobDetailPage } from './pages/JobDetailPage';
@@ -68,6 +69,7 @@ function AppContent() {
       </Routes>
       {!isAdminRoute && <Footer />}
       {!isAdminRoute && <InstallAppBanner />}
+      <UpdateBanner />
       {!hideChatbot && <Chatbot />}
     </div>
   );
