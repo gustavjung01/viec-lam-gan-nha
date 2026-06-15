@@ -192,8 +192,8 @@ export interface LeadStatusHistory {
   created_at: string;
 }
 
-export const TABS = ['Tổng quan', 'CTV', 'Công ty', 'Chiến dịch', 'Lead', 'Tài chính nội bộ', 'Cấu hình'] as const;
-export type AdminTabKey = typeof TABS[number];
+export const TABS = ['Tổng quan', 'CTV', 'Công ty', 'Chiến dịch', 'Lead', 'Tài chính nội bộ', 'Cấu hình'];
+export type AdminTabKey = string;
 
 // ============ AI Config & Load Resources ============
 export type LoadStatus = 'idle' | 'loading' | 'success' | 'error';
