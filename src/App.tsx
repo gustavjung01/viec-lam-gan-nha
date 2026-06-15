@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useLocation, BrowserRouter, Route, Routes } from 'react-router-dom';
 import { Footer } from './components/Footer';
 import { Header } from './components/Header';
@@ -20,14 +21,20 @@ import { AdminConsolePage } from './pages/admin/AdminConsolePage';
 import { CTVRoute, CompanyRoute, ForbiddenPage } from './components/RouteGuard';
 import { PrivacyPolicyPage } from './pages/legal/PrivacyPolicyPage';
 import { DataDeletionPage } from './pages/legal/DataDeletionPage';
+import { syncAdminPwaMetadata } from './lib/adminPwa';
 
 function AppContent() {
   const location = useLocation();
-  const hideChatbot = location.pathname === '/privacy-policy' || location.pathname === '/data-deletion';
+  const isAdminRoute = location.pathname.startsWith('/admin');
+  const hideChatbot = isAdminRoute || location.pathname === '/privacy-policy' || location.pathname === '/data-deletion';
+
+  useEffect(() => {
+    syncAdminPwaMetadata(location.pathname);
+  }, [location.pathname]);
 
   return (
-    <div className="min-h-screen bg-brand-surface text-slate-900">
-      <Header />
+    <div className={`min-h-screen text-slate-900 ${isAdminRoute ? 'bg-slate-100' : 'bg-brand-surface'}`}>
+      {!isAdminRoute && <Header />}
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/viec-lam" element={<JobsPage />} />
@@ -59,8 +66,8 @@ function AppContent() {
         <Route path="/admin/leads" element={<AdminConsolePage />} />
         <Route path="/admin/reports" element={<AdminConsolePage />} />
       </Routes>
-      <Footer />
-      <InstallAppBanner />
+      {!isAdminRoute && <Footer />}
+      {!isAdminRoute && <InstallAppBanner />}
       {!hideChatbot && <Chatbot />}
     </div>
   );
