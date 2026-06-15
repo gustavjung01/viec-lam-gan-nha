@@ -282,6 +282,7 @@ import applyRoutes from './src/routes/apply.js';
 import accountRoutes, { clerkLookupRoutes } from './src/routes/account.js';
 import marketplaceRoutes from './src/routes/marketplace.js';
 import adminAuthRoutes from './src/routes/adminAuth.js';
+import adminConsoleRoutes from './src/routes/adminConsole.js';
 import jobRoutes from './src/routes/jobs.js';
 import candidateRoutes from './src/routes/candidates.js';
 import matchingRoutes from './src/routes/matching.js';
@@ -1330,6 +1331,7 @@ app.post('/api/admin/telegram-settings/test', adminAuth, async (req, res) => {
 
 // Marketplace routes. Admin sub-routes require admin authentication.
 app.use('/api/admin', adminAuth, adminReadLimiter);
+app.use('/api/admin', adminConsoleRoutes);
 app.use('/api', marketplaceRoutes);
 
 // 404 handler

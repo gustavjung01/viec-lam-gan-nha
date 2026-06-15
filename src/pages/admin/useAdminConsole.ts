@@ -232,18 +232,24 @@ export function useAdminConsole() {
       if (logsRes.ok) setAuditLogs((await logsRes.json()).data);
       if (taxRes.ok) {
         const taxData = await taxRes.json();
-        // Transform API response to TaxReport structure
-        const taxReport = {
-          summary: {
-            total_qualified_leads: taxData.data?.total_qualified_leads || 0,
-            total_company_bounty: taxData.data?.total_company_charged || 0,
-            total_platform_fees_20_percent: taxData.data?.total_platform_revenue || 0,
-            total_ctv_payouts_80_percent: taxData.data?.total_ctv_payable || 0,
-          },
-          qualified_leads: [],
-          split_verification: { math_check: true }
-        };
-        setTaxReport(taxReport);
+        const payload = taxData.data || {};
+        const normalizedTaxReport = payload.summary && Array.isArray(payload.qualified_leads)
+          ? payload
+          : {
+              summary: {
+                total_qualified_leads: payload.total_qualified_leads || 0,
+                total_company_bounty: payload.total_company_charged || payload.total_company_bounty || 0,
+                total_platform_fees_20_percent: payload.total_platform_revenue || payload.total_platform_fees_20_percent || 0,
+                total_ctv_payouts_80_percent: payload.total_ctv_payable || payload.total_ctv_payouts_80_percent || 0,
+              },
+              qualified_leads: payload.qualified_leads || [],
+              platform_fees: payload.platform_fees || [],
+              ctv_payouts: payload.ctv_payouts || [],
+              pending_company_debt: payload.pending_company_debt || [],
+              split_verification: payload.split_verification || { math_check: true },
+              period: payload.period,
+            };
+        setTaxReport(normalizedTaxReport);
       }
 
       if (!campaignsRes.ok || !leadsRes.ok || !ctvRes.ok || !companyRes.ok || !logsRes.ok || !taxRes.ok) {

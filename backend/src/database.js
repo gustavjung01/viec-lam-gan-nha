@@ -367,6 +367,19 @@ export async function initMarketplaceTables() {
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS ai_configs (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          type TEXT NOT NULL,
+          provider_type TEXT NOT NULL,
+          config_json TEXT NOT NULL,
+          rules TEXT DEFAULT '',
+          status TEXT DEFAULT 'inactive',
+          error_reason TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
       CREATE TABLE IF NOT EXISTS phone_locks (
           id TEXT PRIMARY KEY,
           normalized_phone TEXT NOT NULL,
@@ -384,6 +397,7 @@ export async function initMarketplaceTables() {
       CREATE INDEX IF NOT EXISTS idx_campaigns_company ON campaigns(company_id);
       CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(status);
       CREATE INDEX IF NOT EXISTS idx_candidates_phone ON candidates(normalized_phone);
+      CREATE INDEX IF NOT EXISTS idx_ai_configs_type_status ON ai_configs(type, status);
       CREATE INDEX IF NOT EXISTS idx_phone_locks ON phone_locks(normalized_phone, campaign_id);
       CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_logs(entity_type, entity_id);
       CREATE INDEX IF NOT EXISTS idx_wallet_company ON wallet_transactions(company_id);
@@ -630,6 +644,29 @@ async function migrateMarketplaceSchema() {
   }
   if (!(await hasColumn('lead_submissions', 'notes'))) {
     migrations.push(`ALTER TABLE lead_submissions ADD COLUMN notes TEXT`);
+  }
+
+  if (!(await hasColumn('platform_fees', 'transaction_reference'))) {
+    migrations.push(`ALTER TABLE platform_fees ADD COLUMN transaction_reference TEXT`);
+  }
+  if (!(await hasColumn('ctv_payouts', 'transaction_reference'))) {
+    migrations.push(`ALTER TABLE ctv_payouts ADD COLUMN transaction_reference TEXT`);
+  }
+
+  if (!(await hasColumn('ai_configs', 'error_reason'))) {
+    migrations.push(`ALTER TABLE ai_configs ADD COLUMN error_reason TEXT`);
+  }
+  if (!(await hasColumn('ai_configs', 'rules'))) {
+    migrations.push(`ALTER TABLE ai_configs ADD COLUMN rules TEXT DEFAULT ''`);
+  }
+  if (!(await hasColumn('ai_configs', 'status'))) {
+    migrations.push(`ALTER TABLE ai_configs ADD COLUMN status TEXT DEFAULT 'inactive'`);
+  }
+  if (!(await hasColumn('ai_configs', 'provider_type'))) {
+    migrations.push(`ALTER TABLE ai_configs ADD COLUMN provider_type TEXT`);
+  }
+  if (!(await hasColumn('ai_configs', 'config_json'))) {
+    migrations.push(`ALTER TABLE ai_configs ADD COLUMN config_json TEXT`);
   }
 
   const leadColumns = await getTableInfo('lead_submissions');

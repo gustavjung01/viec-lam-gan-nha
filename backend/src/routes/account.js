@@ -5,11 +5,15 @@
 
 import express from 'express';
 import { userAuth } from '../middleware/userAuth.js';
+import { accountAutoLink } from '../middleware/accountAutoLink.js';
 import { openDb } from '../database.js';
 import { subscribeUser, listNotificationsForRecipient } from '../utils/notification.js';
 
 const router = express.Router();
 export const clerkLookupRoutes = express.Router();
+
+// Keep company/CTV rows linked to the current Clerk identity whenever account routes run.
+router.use(userAuth, accountAutoLink);
 
 function generateCode(prefix) {
   const timestamp = Date.now().toString(36).toUpperCase();
@@ -279,7 +283,7 @@ clerkLookupRoutes.get('/company/by-clerk/:clerkId', userAuth, async (req, res) =
 });
 
 // GET /api/account/me - Get current user's account status
-router.get('/me', userAuth, async (req, res) => {
+router.get('/me', async (req, res) => {
   let db;
   try {
     db = await openDb();

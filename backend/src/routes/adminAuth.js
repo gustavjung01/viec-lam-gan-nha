@@ -10,15 +10,20 @@ const router = Router();
 async function verifyPassword(password, storedHash) {
   if (!storedHash || !password) return false;
 
-  const [algo, saltHex, hashHex] = storedHash.split(':');
+  const parts = String(storedHash).split(':');
+  if (parts.length !== 3) return false;
+
+  const [algo, saltHex, hashHex] = parts;
   if (algo !== 'pbkdf2' || !saltHex || !hashHex) return false;
 
   const salt = Buffer.from(saltHex, 'hex');
   const storedDerivedKey = Buffer.from(hashHex, 'hex');
+  if (salt.length === 0 || storedDerivedKey.length === 0) return false;
 
   return new Promise(resolve => {
     crypto.pbkdf2(password, salt, 100000, 64, 'sha512', (err, derivedKey) => {
-      if (err) resolve(false);
+      if (err) return resolve(false);
+      if (derivedKey.length !== storedDerivedKey.length) return resolve(false);
       resolve(crypto.timingSafeEqual(derivedKey, storedDerivedKey));
     });
   });
