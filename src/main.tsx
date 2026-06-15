@@ -8,7 +8,10 @@ import './lib/companyLeadWorkflowBridge';
 import './lib/adminLeadWorkflowBridge';
 import './lib/adminLeadHistoryBridge';
 import { registerPwaServiceWorker } from './lib/pwaRegistration';
+import { syncAdminPwaMetadata } from './lib/adminPwa';
 import { RoleProvider } from './contexts/RoleContext';
+
+syncAdminPwaMetadata();
 
 const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
