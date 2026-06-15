@@ -18,18 +18,12 @@ const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const isAdminRoute = window.location.pathname.startsWith('/admin');
 const root = ReactDOM.createRoot(document.getElementById('root')!);
 
-if (!publishableKey && isAdminRoute) {
-  root.render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  );
-} else if (!publishableKey) {
+if (!publishableKey) {
   root.render(
     <React.StrictMode>
       <div style={{ padding: 24, fontFamily: 'sans-serif' }}>
         <h1>Thiếu cấu hình Clerk</h1>
-        <p>Vui lòng thêm VITE_CLERK_PUBLISHABLE_KEY vào .env.local rồi restart npm run dev.</p>
+        <p>Vui lòng thêm VITE_CLERK_PUBLISHABLE_KEY vào .env.local hoặc .env.production rồi build lại.</p>
       </div>
     </React.StrictMode>
   );
@@ -43,10 +37,10 @@ if (!publishableKey && isAdminRoute) {
       </ClerkProvider>
     </React.StrictMode>
   );
-}
 
-if (isAdminRoute) {
-  registerAdminPwaServiceWorker();
-} else {
-  registerPwaServiceWorker();
+  if (isAdminRoute) {
+    registerAdminPwaServiceWorker();
+  } else {
+    registerPwaServiceWorker();
+  }
 }
