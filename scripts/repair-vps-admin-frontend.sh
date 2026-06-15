@@ -29,6 +29,18 @@ http_status() {
   curl -k -sS -o /dev/null -w '%{http_code}' "$url" || true
 }
 
+first_html_asset() {
+  local html_file="$1"
+  node - "$html_file" <<'NODE'
+const fs = require('fs');
+const htmlFile = process.argv[2];
+const html = fs.readFileSync(htmlFile, 'utf8');
+const pattern = /(?:src|href)=["']\/?(assets\/[^"']+)["']/g;
+const match = pattern.exec(html);
+if (match) console.log('/' + match[1]);
+NODE
+}
+
 backup_untracked_blocker() {
   local path="docs/vps-filesystem-map.md"
   if [ -f "$path" ] && ! git ls-files --error-unmatch "$path" >/dev/null 2>&1; then
@@ -158,7 +170,7 @@ NGINX
 
 verify_live_http() {
   local admin_asset
-  admin_asset="$(grep -Eo '/assets/[^"'"'"']+' "$FRONTEND_TARGET/admin.html" | head -1 || true)"
+  admin_asset="$(first_html_asset "$FRONTEND_TARGET/admin.html")"
   [ -n "$admin_asset" ] || fail "Cannot find /assets reference in deployed admin.html"
 
   echo "[repair-vps-admin-frontend] First admin asset: $admin_asset"
