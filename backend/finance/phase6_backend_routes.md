@@ -10,6 +10,7 @@ backend/src/finance/ledgerService.js
 backend/src/finance/reportService.js
 backend/src/routes/finance.js
 backend/scripts/mount-finance-routes.cjs
+deploy-finance-phase6.sh
 ```
 
 ## Why there is a mount helper
@@ -104,18 +105,34 @@ failed
 rejected
 ```
 
-## Deployment note
+## Clean deployment flow
 
-After pulling the branch on VPS source repo, run:
+Keep `/var/www/viec-lam-gan-nha-source` clean. Do not run `finance:mount` inside the source repo before syncing.
+
+Use the root deploy script:
 
 ```bash
-cd /var/www/viec-lam-gan-nha-source/backend
-node scripts/mount-finance-routes.cjs
+cd /var/www/viec-lam-gan-nha-source
+git fetch origin
+git checkout finance-phase6
+git reset --hard origin/finance-phase6
+chmod +x deploy-finance-phase6.sh
+./deploy-finance-phase6.sh
 ```
 
-Then sync backend to the live backend folder and restart the systemd service.
+The deploy script does this:
 
-## Test commands
+```txt
+1. Reset source repo to origin/finance-phase6
+2. Install backend dependencies in source
+3. Sync backend source to live backend folder
+4. Run finance:mount inside /var/www/viec-lam-gan-nha/backend only
+5. Restart systemd service
+6. Test /api/health and /api/finance/health
+7. Verify source repo is still clean
+```
+
+## Manual test commands
 
 ```bash
 curl -sS http://localhost:3001/api/health
