@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { saveApplication, updateTelegramStatus, openDb } from '../database.js';
 import { sendApplicationToTelegram } from '../telegram.js';
+import { sendNotification } from '../utils/notification.js';
 
 const router = Router();
 
@@ -22,6 +23,39 @@ function generateCode(prefix) {
   const timestamp = Date.now().toString(36).toUpperCase();
   const random = Math.random().toString(36).substring(2, 5).toUpperCase();
   return `${prefix}${timestamp}${random}`;
+}
+
+async function notifyAdminNewLead({ leadId, leadCode, campaign, application, candidate, data, normalizedPhone }) {
+  try {
+    const companyName = campaign?.company_name || campaign?.companyName || data.companyCode;
+    const jobTitle = data.jobTitle || campaign?.title || 'Tin ứng tuyển mới';
+
+    await sendNotification({
+      role: 'admin',
+      title: 'Lead mới từ website',
+      message: `${data.fullName} (${data.phone}) vừa đăng ký ${jobTitle}`,
+      url: '/admin/console?tab=Lead',
+      data: {
+        event: 'lead_created',
+        lead_id: leadId,
+        lead_code: leadCode,
+        application_id: application.id,
+        candidate_id: candidate?.id || null,
+        candidate_name: data.fullName,
+        candidate_phone: data.phone,
+        normalized_phone: normalizedPhone,
+        province: data.province,
+        district: data.district,
+        campaign_id: campaign?.id || null,
+        campaign_title: jobTitle,
+        company_code: data.companyCode,
+        company_name: companyName,
+        source: 'public_apply_form',
+      },
+    });
+  } catch (error) {
+    console.warn('[Apply] Failed to notify admin about new lead:', error.message);
+  }
 }
 
 // Validation schema
@@ -102,7 +136,9 @@ router.post('/', async (req, res) => {
 
       // Get or create public_apply campaign for this company
       let campaign = await db.get(`
-        SELECT c.* FROM campaigns c
+        SELECT c.*, comp.name AS company_name, comp.company_code
+        FROM campaigns c
+        JOIN companies comp ON c.company_id = comp.id
         WHERE c.company_id = (SELECT id FROM companies WHERE company_code = ?)
         AND c.visibility = 'public_candidate'
         LIMIT 1
@@ -119,7 +155,13 @@ router.post('/', async (req, res) => {
               ctv_reward_amount, platform_fee_amount, status, created_at, updated_at
             ) VALUES (?, ?, ?, 'Public Web Applications', 'public_candidate', 0, 0, 0, 'active', ?, ?)
           `, [campaignId, generateCode('CMP'), company.id, now, now]);
-          campaign = { id: campaignId };
+          campaign = {
+            id: campaignId,
+            title: 'Public Web Applications',
+            company_id: company.id,
+            company_name: company.name,
+            company_code: company.company_code,
+          };
         }
       }
       
@@ -173,6 +215,8 @@ router.post('/', async (req, res) => {
             application_id: application.id
           })
         ]);
+
+        await notifyAdminNewLead({ leadId, leadCode, campaign, application, candidate, data, normalizedPhone });
       }
 
       await db.close();
