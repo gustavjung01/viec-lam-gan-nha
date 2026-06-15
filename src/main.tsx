@@ -8,6 +8,7 @@ import './lib/companyLeadWorkflowBridge';
 import './lib/adminLeadWorkflowBridge';
 import './lib/adminLeadHistoryBridge';
 import { registerPwaServiceWorker } from './lib/pwaRegistration';
+import { registerAdminPwaServiceWorker } from './lib/adminPwaRegistration';
 import { syncAdminPwaMetadata } from './lib/adminPwa';
 import { RoleProvider } from './contexts/RoleContext';
 
@@ -44,4 +45,8 @@ if (!publishableKey && isAdminRoute) {
   );
 }
 
-registerPwaServiceWorker();
+if (isAdminRoute) {
+  registerAdminPwaServiceWorker();
+} else {
+  registerPwaServiceWorker();
+}
