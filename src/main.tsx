@@ -14,9 +14,17 @@ import { RoleProvider } from './contexts/RoleContext';
 syncAdminPwaMetadata();
 
 const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+const isAdminRoute = window.location.pathname.startsWith('/admin');
+const root = ReactDOM.createRoot(document.getElementById('root')!);
 
-if (!publishableKey) {
-  ReactDOM.createRoot(document.getElementById('root')!).render(
+if (!publishableKey && isAdminRoute) {
+  root.render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+} else if (!publishableKey) {
+  root.render(
     <React.StrictMode>
       <div style={{ padding: 24, fontFamily: 'sans-serif' }}>
         <h1>Thiếu cấu hình Clerk</h1>
@@ -25,7 +33,7 @@ if (!publishableKey) {
     </React.StrictMode>
   );
 } else {
-  ReactDOM.createRoot(document.getElementById('root')!).render(
+  root.render(
     <React.StrictMode>
       <ClerkProvider publishableKey={publishableKey}>
         <RoleProvider>
