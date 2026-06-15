@@ -90,6 +90,26 @@ async function ensureNotificationLogTables(db) {
   `);
 }
 
+async function ensureNotificationSubscriptionTable(db) {
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS notification_subscriptions (
+      id TEXT PRIMARY KEY,
+      clerk_user_id TEXT NOT NULL,
+      role TEXT,
+      entity_id TEXT,
+      player_id TEXT NOT NULL,
+      status TEXT DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'revoked')),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(clerk_user_id, player_id)
+    )
+  `);
+
+  await db.run('CREATE INDEX IF NOT EXISTS idx_notification_subscriptions_user ON notification_subscriptions(clerk_user_id, status)');
+  await db.run('CREATE INDEX IF NOT EXISTS idx_notification_subscriptions_role ON notification_subscriptions(role, status)');
+  await db.run('CREATE INDEX IF NOT EXISTS idx_notification_subscriptions_player ON notification_subscriptions(player_id)');
+}
+
 async function recordInboxNotification(db, { targetRole, targetId, title, message, url, data, source = 'system', providerStatus = 'pending', providerMessageId = null }) {
   if (!title) return null;
   const id = generateNotificationId('NIN');
@@ -212,15 +232,8 @@ export async function listNotificationsForRecipient({ clerkUserId, roles = [], l
 }
 
 /**
- * Helper to send OneSignal notifications
- * @param {Object} params
- * @param {string} params.clerkUserId - Target user ID (optional if playerIds provided)
- * @param {string[]} params.playerIds - Direct OneSignal player IDs (optional)
- * @param {string} params.role - Target role filter (admin, ctv, company)
- * @param {string} params.title - Notification title
- * @param {string} params.message - Notification body content
- * @param {string} params.url - Link to open when clicked
- * @param {Object} params.data - Custom data payload
+ * Helper to send OneSignal notifications.
+ * Inbox rows are written before push delivery, so admin history still works when push has no target.
  */
 export async function sendNotification({ clerkUserId, playerIds = [], role, title, message, url, data }) {
   if (isPrematureCompanyLeadNotification({ clerkUserId, role, title, message, url })) {
@@ -230,13 +243,15 @@ export async function sendNotification({ clerkUserId, playerIds = [], role, titl
 
   const appId = process.env.ONESIGNAL_APP_ID;
   const apiKey = process.env.ONESIGNAL_REST_API_KEY;
+  let db;
+  const inboxIds = [];
 
   try {
-    const db = await openDb();
+    db = await openDb();
     await ensureNotificationInboxTable(db);
     await ensureNotificationLogTables(db);
+    await ensureNotificationSubscriptionTable(db);
 
-    const inboxIds = [];
     const inboxTargetRole = role || 'user';
     const inboxTargetId = clerkUserId || null;
     const inboxId = await recordInboxNotification(db, {
@@ -254,30 +269,29 @@ export async function sendNotification({ clerkUserId, playerIds = [], role, titl
     if (!appId || !apiKey) {
       console.warn('[Notification] OneSignal is not configured (missing ONESIGNAL_APP_ID or ONESIGNAL_REST_API_KEY)');
       await db.close();
+      db = null;
       return { success: false, error: 'NOT_CONFIGURED', inboxIds };
     }
 
     let targets = [...playerIds];
 
-    // If clerkUserId is provided, fetch their playerIds
     if (clerkUserId) {
       const subs = await db.all('SELECT player_id FROM notification_subscriptions WHERE clerk_user_id = ? AND status = "active"', [clerkUserId]);
       targets.push(...subs.map(s => s.player_id));
     }
-    
-    // If role is provided, fetch all subscribers of that role (e.g., 'admin')
+
     if (role && !clerkUserId && playerIds.length === 0) {
       const subs = await db.all('SELECT player_id FROM notification_subscriptions WHERE role = ? AND status = "active"', [role]);
       targets.push(...subs.map(s => s.player_id));
     }
 
-    // De-duplicate targets
-    targets = [...new Set(targets)];
+    targets = [...new Set(targets.filter(Boolean))];
 
     if (targets.length === 0) {
       console.log(`[Notification] No active subscriptions found for ${clerkUserId || role || 'unknown'}`);
       await updateInboxProviderStatus(db, inboxIds, { providerStatus: 'no_targets' });
       await db.close();
+      db = null;
       return { success: false, error: 'NO_TARGETS', inboxIds };
     }
 
@@ -299,32 +313,44 @@ export async function sendNotification({ clerkUserId, playerIds = [], role, titl
       body: JSON.stringify(payload)
     });
 
-    const result = await response.json();
-    const providerStatus = result.id ? 'sent' : 'failed';
+    let result = {};
+    try {
+      result = await response.json();
+    } catch {
+      result = { errors: [`Invalid OneSignal JSON response (${response.status})`] };
+    }
+
+    const providerStatus = response.ok && result.id ? 'sent' : 'failed';
     await updateInboxProviderStatus(db, inboxIds, { providerMessageId: result.id || null, providerStatus });
-    
-    // Log to DB
+
     const logId = `NOTI-${Date.now()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
     await db.run(`
       INSERT INTO notification_logs (id, target_role, target_id, title, message, url, provider_message_id, status, error)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
-      logId, 
-      role || 'user', 
-      clerkUserId || targets[0], 
-      title, 
-      message, 
-      url, 
-      result.id || null, 
-      result.id ? 'sent' : 'failed',
+      logId,
+      role || 'user',
+      clerkUserId || targets[0],
+      title,
+      message,
+      url,
+      result.id || null,
+      providerStatus,
       result.errors ? JSON.stringify(result.errors) : null
     ]);
 
     await db.close();
-    return { success: true, providerId: result.id, inboxIds };
+    db = null;
+    return { success: providerStatus === 'sent', providerId: result.id, inboxIds, error: providerStatus === 'failed' ? result.errors : undefined };
   } catch (error) {
     console.error('[Notification] Send failed:', error);
-    return { success: false, error: error.message };
+    try {
+      if (db && inboxIds.length > 0) {
+        await updateInboxProviderStatus(db, inboxIds, { providerStatus: 'failed' });
+      }
+    } catch {}
+    try { await db?.close?.(); } catch {}
+    return { success: false, error: error.message, inboxIds };
   }
 }
 
@@ -402,8 +428,9 @@ startLeadSlaEngine({ sendNotification });
 export async function subscribeUser(clerkUserId, role, playerId, entityId = null) {
   const db = await openDb();
   const id = `SUB-${Date.now()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
-  
+
   try {
+    await ensureNotificationSubscriptionTable(db);
     await db.run(`
       INSERT INTO notification_subscriptions (id, clerk_user_id, role, entity_id, player_id, status, updated_at)
       VALUES (?, ?, ?, ?, ?, 'active', CURRENT_TIMESTAMP)
@@ -413,7 +440,7 @@ export async function subscribeUser(clerkUserId, role, playerId, entityId = null
         status = 'active',
         updated_at = CURRENT_TIMESTAMP
     `, [id, clerkUserId, role, entityId, playerId]);
-    
+
     await db.close();
     return { success: true };
   } catch (error) {
