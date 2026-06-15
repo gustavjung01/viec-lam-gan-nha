@@ -33,11 +33,15 @@ function extractHtmlAssets(distPath, htmlFile) {
   }
 }
 
-function pickEntryAsset(assets, fallbackAssets, entryName) {
+function pickEntryAsset(assets, fallbackAssets, entryNames) {
+  const names = Array.isArray(entryNames) ? entryNames : [entryNames];
+  for (const entryName of names) {
+    const match = assets.find((asset) => new RegExp(`^assets/${entryName}-.*\\.js$`).test(asset));
+    if (match) return match;
+  }
   return (
-    assets.find((asset) => new RegExp(`^assets/${entryName}-.*\\.js$`).test(asset)) ||
     assets.find((asset) => asset.endsWith('.js')) ||
-    fallbackAssets.find((asset) => new RegExp(`^assets/${entryName}-.*\\.js$`).test(asset)) ||
+    fallbackAssets.find((asset) => asset.endsWith('.js')) ||
     null
   );
 }
@@ -49,7 +53,7 @@ async function main() {
   const allAssets = listAssets(distPath);
   const indexAssets = extractHtmlAssets(distPath, 'index.html');
   const adminAssets = extractHtmlAssets(distPath, 'admin.html');
-  const indexAsset = pickEntryAsset(indexAssets, allAssets, 'index');
+  const indexAsset = pickEntryAsset(indexAssets, allAssets, ['main', 'index']);
   const adminAsset = pickEntryAsset(adminAssets, allAssets, 'admin');
 
   const info = {
