@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "import-fix": "node import-vps-fix.cjs"
+    "import-fix": "node import-vps-fix.cjs",
+    "finance:mount": "node scripts/mount-finance-routes.cjs"
   },
   "dependencies": {
     "@clerk/backend": "^3.4.14",
