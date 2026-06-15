@@ -280,12 +280,58 @@ clerkLookupRoutes.get('/company/by-clerk/:clerkId', userAuth, async (req, res) =
 
 // GET /api/account/me - Get current user's account status
 router.get('/me', userAuth, async (req, res) => {
+  let db;
   try {
-    const db = await openDb();
+    db = await openDb();
     const { clerkUserId, email } = req.user;
-    const ctvAccount = await db.get('SELECT * FROM ctv_accounts WHERE clerk_user_id = ?', [clerkUserId]);
-    const companyAccount = await db.get('SELECT * FROM companies WHERE clerk_user_id = ?', [clerkUserId]);
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+
+    let ctvAccount = await db.get('SELECT * FROM ctv_accounts WHERE clerk_user_id = ?', [clerkUserId]);
+    let companyAccount = await db.get('SELECT * FROM companies WHERE clerk_user_id = ?', [clerkUserId]);
+
+    if (!ctvAccount && normalizedEmail) {
+      const fallbackCtv = await db.get(`
+        SELECT * FROM ctv_accounts
+        WHERE LOWER(TRIM(email)) = ?
+          AND (clerk_user_id IS NULL OR TRIM(clerk_user_id) = '')
+        ORDER BY created_at DESC
+        LIMIT 1
+      `, [normalizedEmail]);
+
+      if (fallbackCtv) {
+        await db.run(`
+          UPDATE ctv_accounts
+          SET clerk_user_id = ?, updated_at = datetime('now')
+          WHERE id = ? AND (clerk_user_id IS NULL OR TRIM(clerk_user_id) = '')
+        `, [clerkUserId, fallbackCtv.id]);
+
+        ctvAccount = await db.get('SELECT * FROM ctv_accounts WHERE id = ?', [fallbackCtv.id]);
+      }
+    }
+
+    if (!companyAccount && normalizedEmail) {
+      const fallbackCompany = await db.get(`
+        SELECT * FROM companies
+        WHERE LOWER(TRIM(email)) = ?
+          AND (clerk_user_id IS NULL OR TRIM(clerk_user_id) = '')
+        ORDER BY created_at DESC
+        LIMIT 1
+      `, [normalizedEmail]);
+
+      if (fallbackCompany) {
+        await db.run(`
+          UPDATE companies
+          SET clerk_user_id = ?, updated_at = datetime('now')
+          WHERE id = ? AND (clerk_user_id IS NULL OR TRIM(clerk_user_id) = '')
+        `, [clerkUserId, fallbackCompany.id]);
+
+        companyAccount = await db.get('SELECT * FROM companies WHERE id = ?', [fallbackCompany.id]);
+      }
+    }
+
     await db.close();
+    db = null;
+
     res.json({
       success: true,
       data: {
@@ -295,6 +341,7 @@ router.get('/me', userAuth, async (req, res) => {
       },
     });
   } catch (error) {
+    try { await db?.close?.(); } catch {}
     console.error('Get account status failed:', error);
     res.status(500).json({ success: false, error: error.message });
   }
