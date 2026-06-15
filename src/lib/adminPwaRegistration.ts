@@ -1,15 +1,22 @@
 const ADMIN_BUILD_SIGNATURE_KEY = 'vlgn:admin:last-build-signature';
 const BUILD_INFO_URL = '/build-info.json';
 const UPDATE_INTERVAL_MS = 60_000;
+const RELOAD_AFTER_UPDATE_MS = 1200;
 
 type BuildInfo = {
   commit?: string;
   buildTime?: string;
   indexAsset?: string | null;
+  adminAsset?: string | null;
 };
 
 function getBuildSignature(info: BuildInfo) {
-  return [info.commit || 'unknown', info.buildTime || 'unknown', info.indexAsset || 'unknown'].join(':');
+  return [
+    info.commit || 'unknown',
+    info.buildTime || 'unknown',
+    info.indexAsset || 'unknown',
+    info.adminAsset || 'unknown',
+  ].join(':');
 }
 
 async function fetchBuildInfo(): Promise<BuildInfo | null> {
@@ -37,29 +44,57 @@ function readSignature() {
 function writeSignature(signature: string) {
   try {
     window.localStorage.setItem(ADMIN_BUILD_SIGNATURE_KEY, signature);
-  } catch {}
+  } catch {
+    // Local storage can be blocked in private browsing modes.
+  }
 }
 
 function emitUpdateAvailable() {
   window.dispatchEvent(new CustomEvent('vlgn:pwa-update-available', { detail: { app: 'admin' } }));
 }
 
+async function notifyWaitingWorker(registration: ServiceWorkerRegistration) {
+  if (registration.waiting) {
+    registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+  }
+}
+
 export function registerAdminPwaServiceWorker() {
   if (!('serviceWorker' in navigator)) return;
 
   let updateTimer: number | undefined;
+  let reloadPending = false;
+
+  const safeReload = () => {
+    if (reloadPending) return;
+    reloadPending = true;
+    window.location.reload();
+  };
+
+  const requestUpdate = async (registration: ServiceWorkerRegistration) => {
+    try {
+      await registration.update();
+      await notifyWaitingWorker(registration);
+    } catch {
+      // Ignore transient update failures; the next check will retry.
+    }
+  };
 
   const checkForNewBuild = async (registration: ServiceWorkerRegistration) => {
     const info = await fetchBuildInfo();
     if (!info) return;
+
     const signature = getBuildSignature(info);
     const previous = readSignature();
+
     if (previous && previous !== signature) {
       writeSignature(signature);
-      await registration.update();
       emitUpdateAvailable();
+      await requestUpdate(registration);
+      window.setTimeout(safeReload, RELOAD_AFTER_UPDATE_MS);
       return;
     }
+
     if (previous !== signature) writeSignature(signature);
   };
 
@@ -72,18 +107,25 @@ export function registerAdminPwaServiceWorker() {
     registration.addEventListener('updatefound', () => {
       const installingWorker = registration.installing;
       if (!installingWorker) return;
+
       installingWorker.addEventListener('statechange', () => {
         if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
           emitUpdateAvailable();
+          void notifyWaitingWorker(registration);
         }
       });
     });
 
     navigator.serviceWorker.addEventListener('message', (event) => {
-      if (event.data?.type === 'ADMIN_SW_UPDATED') emitUpdateAvailable();
+      if (event.data?.type === 'ADMIN_SW_UPDATED') {
+        emitUpdateAvailable();
+        window.setTimeout(safeReload, RELOAD_AFTER_UPDATE_MS);
+      }
     });
 
-    await registration.update();
+    navigator.serviceWorker.addEventListener('controllerchange', safeReload);
+
+    await requestUpdate(registration);
     await checkForNewBuild(registration);
 
     updateTimer = window.setInterval(() => {
@@ -92,6 +134,11 @@ export function registerAdminPwaServiceWorker() {
 
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') void checkForNewBuild(registration);
+    });
+
+    window.addEventListener('pageshow', () => {
+      void requestUpdate(registration);
+      void checkForNewBuild(registration);
     });
   };
 
