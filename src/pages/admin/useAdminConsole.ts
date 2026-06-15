@@ -158,7 +158,7 @@ export function useAdminConsole() {
     if (!token) return;
 
     try {
-      const res = await adminFetch(token, `/admin/leads/${leadId}/history`);
+      const res = await adminFetch(token, `/admin/auth/leads/${leadId}/history`);
       if (res.ok) {
         const data = await res.json();
         setSelectedLeadHistory(data.data || []);
@@ -171,7 +171,7 @@ export function useAdminConsole() {
 
   const refreshAdminLeadsSilently = async (force = false) => {
     const token = localStorage.getItem('vlgn_admin_session');
-    if (!token || activeTab !== 'Lead' || adminLeadRefreshInFlightRef.current) return;
+    if (!token || adminLeadRefreshInFlightRef.current) return;
     if (!force && (searchTimeoutRef.current || isAdminFormControlFocused())) return;
 
     adminLeadRefreshInFlightRef.current = true;
@@ -318,7 +318,6 @@ export function useAdminConsole() {
     try {
       const path = endpoint.replace('/api', '');
       const options: RequestInit = { method: 'POST' };
-      // Tự động thêm admin_id vào body
       const requestBody = {
         ...body,
         admin_id: session?.id || session?.email || 'admin'
@@ -405,7 +404,7 @@ export function useAdminConsole() {
   }, [selectedLead?.id]);
 
   useEffect(() => {
-    if (!session || activeTab !== 'Lead') return;
+    if (!session) return;
 
     const runRefresh = () => {
       if (document.visibilityState === 'visible') void refreshAdminLeadsSilently();
@@ -427,7 +426,7 @@ export function useAdminConsole() {
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [session, activeTab, leadsPagination.page, leadsPagination.limit, leadFilters, selectedLead?.id]);
+  }, [session, leadsPagination.page, leadsPagination.limit, leadFilters, selectedLead?.id]);
 
   const handleLeadStatusChange = async (leadId: string, newStatus: string, reason?: string) => {
     const token = localStorage.getItem('vlgn_admin_session');
