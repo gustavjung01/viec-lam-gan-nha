@@ -60,40 +60,51 @@ strip_semicolon() {
   sed 's/[;[:space:]]*$//'
 }
 
-detect_ssl_certificate() {
-  if [ -n "${SSL_CERTIFICATE:-}" ] && [ -f "$SSL_CERTIFICATE" ]; then
-    printf '%s\n' "$SSL_CERTIFICATE"
-    return
-  fi
+print_existing_first() {
+  local candidate
+  while IFS= read -r candidate; do
+    candidate="$(printf '%s' "$candidate" | strip_semicolon)"
+    [ -n "$candidate" ] || continue
+    if [ -f "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
 
-  if [ -f "$PREFERRED_SSL_CERTIFICATE" ]; then
+find_certificate_candidates() {
+  {
+    [ -n "${SSL_CERTIFICATE:-}" ] && printf '%s\n' "$SSL_CERTIFICATE"
     printf '%s\n' "$PREFERRED_SSL_CERTIFICATE"
-    return
-  fi
+    nginx_dump | awk '$1 == "ssl_certificate" && $2 !~ /key/ { print $2 }'
+    sudo find /etc/letsencrypt/live /etc/letsencrypt/archive /etc/ssl -type f \( -name 'fullchain*.pem' -o -name '*fullchain*.pem' -o -name '*.crt' -o -name '*.pem' \) 2>/dev/null
+  } | awk 'NF' | strip_semicolon | awk '!seen[$0]++'
+}
 
-  nginx_dump | awk '$1 == "ssl_certificate" && $2 !~ /key/ { print $2; exit }' | strip_semicolon
+find_key_candidates() {
+  {
+    [ -n "${SSL_CERTIFICATE_KEY:-}" ] && printf '%s\n' "$SSL_CERTIFICATE_KEY"
+    printf '%s\n' "$PREFERRED_SSL_CERTIFICATE_KEY"
+    nginx_dump | awk '$1 == "ssl_certificate_key" { print $2 }'
+    sudo find /etc/letsencrypt/live /etc/letsencrypt/archive /etc/ssl -type f \( -name 'privkey*.pem' -o -name '*privkey*.pem' -o -name '*.key' \) 2>/dev/null
+  } | awk 'NF' | strip_semicolon | awk '!seen[$0]++'
+}
+
+detect_ssl_certificate() {
+  find_certificate_candidates | print_existing_first || true
 }
 
 detect_ssl_certificate_key() {
-  if [ -n "${SSL_CERTIFICATE_KEY:-}" ] && [ -f "$SSL_CERTIFICATE_KEY" ]; then
-    printf '%s\n' "$SSL_CERTIFICATE_KEY"
-    return
-  fi
-
-  if [ -f "$PREFERRED_SSL_CERTIFICATE_KEY" ]; then
-    printf '%s\n' "$PREFERRED_SSL_CERTIFICATE_KEY"
-    return
-  fi
-
-  nginx_dump | awk '$1 == "ssl_certificate_key" { print $2; exit }' | strip_semicolon
+  find_key_candidates | print_existing_first || true
 }
 
 resolve_ssl_paths() {
   SSL_CERTIFICATE="$(detect_ssl_certificate)"
   SSL_CERTIFICATE_KEY="$(detect_ssl_certificate_key)"
 
-  [ -n "$SSL_CERTIFICATE" ] || fail "Cannot detect ssl_certificate from current nginx config"
-  [ -n "$SSL_CERTIFICATE_KEY" ] || fail "Cannot detect ssl_certificate_key from current nginx config"
+  [ -n "$SSL_CERTIFICATE" ] || fail "Cannot find any existing SSL certificate file. Run: sudo find /etc/letsencrypt /etc/ssl -type f | grep -E 'fullchain|cert|crt|pem' | head -50"
+  [ -n "$SSL_CERTIFICATE_KEY" ] || fail "Cannot find any existing SSL certificate key file. Run: sudo find /etc/letsencrypt /etc/ssl -type f | grep -E 'privkey|key' | head -50"
   [ -f "$SSL_CERTIFICATE" ] || fail "SSL certificate not found: $SSL_CERTIFICATE"
   [ -f "$SSL_CERTIFICATE_KEY" ] || fail "SSL certificate key not found: $SSL_CERTIFICATE_KEY"
 
