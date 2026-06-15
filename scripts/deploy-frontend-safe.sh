@@ -15,6 +15,20 @@ require_file() {
   [ -f "$path" ] || fail "Missing required file: $path"
 }
 
+extract_asset_refs() {
+  local html_file="$1"
+  node - "$html_file" <<'NODE'
+const fs = require('fs');
+const htmlFile = process.argv[2];
+const html = fs.readFileSync(htmlFile, 'utf8');
+const refs = new Set();
+const pattern = /(?:src|href)=["']\/?(assets\/[^"']+)["']/g;
+let match;
+while ((match = pattern.exec(html))) refs.add(match[1]);
+for (const ref of [...refs].sort()) console.log(ref);
+NODE
+}
+
 require_asset_refs() {
   local html_file="$1"
   local label="$2"
@@ -25,7 +39,7 @@ require_asset_refs() {
     [ -n "$ref" ] || continue
     found=1
     [ -f "$SOURCE_DIST/$ref" ] || fail "$label references missing asset: /$ref"
-  done < <(grep -Eo '["'"'"']/?assets/[^"'"'"']+' "$html_file" | tr -d '"'"'"'' | sed 's#^/##' | sort -u)
+  done < <(extract_asset_refs "$html_file")
 
   [ "$found" = "1" ] || fail "$label does not reference any built /assets files"
 }
