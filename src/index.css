@@ -47,6 +47,31 @@ textarea {
   font: inherit;
 }
 
+html[data-app-shell='admin'] body {
+  background: #f1f5f9;
+  overscroll-behavior-y: contain;
+}
+
+html[data-app-shell='admin'] button,
+html[data-app-shell='admin'] a,
+html[data-app-shell='admin'] input,
+html[data-app-shell='admin'] select,
+html[data-app-shell='admin'] textarea {
+  touch-action: manipulation;
+}
+
+@media (max-width: 767px) {
+  html[data-app-shell='admin'] input,
+  html[data-app-shell='admin'] select,
+  html[data-app-shell='admin'] textarea {
+    font-size: 16px;
+  }
+
+  html[data-app-shell='admin'] main {
+    min-height: calc(100vh - 76px);
+  }
+}
+
 @supports (padding-top: env(safe-area-inset-top)) {
   header.sticky.top-0 {
     padding-top: env(safe-area-inset-top);
