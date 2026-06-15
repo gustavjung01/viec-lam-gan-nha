@@ -6,14 +6,14 @@ import fs from 'fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DB_PATH = path.join(__dirname, '..', 'data', 'applications.db');
+const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, '..', 'data', 'applications.db');
+const DATA_DIR = path.dirname(DB_PATH);
 
 let db = null;
 
 // Ensure data directory exists
-const dataDir = path.dirname(DB_PATH);
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
 export function initDatabase() {
@@ -698,7 +698,7 @@ async function migrateMarketplaceSchema() {
   await ensureMarketplaceIndexes();
 }
 
-export { db, DB_PATH };
+export { db, DB_PATH, DATA_DIR };
 
 // Helper: Open database for marketplace routes (Promise-based)
 export async function openDb() {

@@ -272,7 +272,7 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 
-import { initDatabase, initMarketplaceTables } from './src/database.js';
+import { initDatabase, initMarketplaceTables, DATA_DIR } from './src/database.js';
 import { getAllAiConfigs, getAiConfigById, getAiConfigsByType, createAiConfig, updateAiConfig, deleteAiConfig,
          getActiveChatbotConfig, getFallbackChatbotConfig, maskSensitiveConfig, unmaskForSave } from './src/aiConfigs.js';
 import { loadProviderResources, loadSecondaryResources } from './src/aiResourceLoader.js';
@@ -680,7 +680,7 @@ async function getAiResponse(settings, messages, context = {}) {
   return 'Chatbot is not properly configured. Please contact support.';
 }
 
-const LOG_PATH = path.join(__dirname, 'data', 'web-support-logs.jsonl');
+const LOG_PATH = path.join(DATA_DIR, 'web-support-logs.jsonl');
 
 async function logWebSupportActivity(logEntry) {
   try {

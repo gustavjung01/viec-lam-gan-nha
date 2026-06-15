@@ -3,13 +3,14 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { DATA_DIR } from './database.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
-const TELEGRAM_CONFIG_PATH = path.join(__dirname, '..', 'data', 'telegram-config.json');
+const TELEGRAM_CONFIG_PATH = path.join(DATA_DIR, 'telegram-config.json');
 
 // Helper to read Telegram settings
 export function readTelegramSettings() {
