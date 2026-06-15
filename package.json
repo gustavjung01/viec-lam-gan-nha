@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build && node scripts/generate-build-info.mjs",
+    "build": "node scripts/verify-frontend-env.mjs && tsc -b && vite build && node scripts/generate-build-info.mjs",
     "generate:pwa-icons": "python scripts/generate-pwa-icons.py",
     "preview": "vite preview --host 0.0.0.0"
   },
