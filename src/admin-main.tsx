@@ -10,7 +10,7 @@ import { syncAdminPwaMetadata } from './lib/adminPwa';
 import { registerAdminPwaServiceWorker } from './lib/adminPwaRegistration';
 import { RoleProvider } from './contexts/RoleContext';
 
-syncAdminPwaMetadata('/admin/console');
+syncAdminPwaMetadata(window.location.pathname);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
