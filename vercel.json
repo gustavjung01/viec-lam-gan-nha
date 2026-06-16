@@ -10,6 +10,10 @@
     {
       "source": "/api/:path*",
       "destination": "https://api.vieclamgannha.me/api/:path*"
+    },
+    {
+      "source": "/((?!api/|assets/|icons/|screenshots/|favicon.ico|manifest.webmanifest|admin-manifest.webmanifest|sw.js|admin-sw.js|build-info.json|robots.txt).*)",
+      "destination": "/index.html"
     }
   ]
 }
