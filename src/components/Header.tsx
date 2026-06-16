@@ -58,18 +58,21 @@ export function Header() {
     };
   }, [location.pathname]);
 
+  const hasCompanyAccess = ['active', 'approved', 'pending'].includes(companyStatus || '');
+  const hasCtvAccess = ['active', 'approved', 'pending'].includes(ctvStatus || '');
+
   const getMenuItems = () => {
     const items = [
       { to: '/viec-lam', label: 'Việc làm' },
     ];
 
-    if (companyStatus === 'active' || companyStatus === 'pending') {
+    if (hasCompanyAccess) {
       items.push({ to: '/company/dashboard', label: 'Dashboard Công ty' });
     } else {
       items.push({ to: '/nha-tuyen-dung', label: 'Dành cho công ty' });
     }
 
-    if (ctvStatus === 'active' || ctvStatus === 'pending') {
+    if (hasCtvAccess) {
       items.push({ to: '/ctv/dashboard', label: 'Dashboard CTV' });
     } else {
       items.push({ to: '/ctv', label: 'Cộng tác viên' });
