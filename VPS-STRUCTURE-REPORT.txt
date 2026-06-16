@@ -1,0 +1,130 @@
+﻿### [VPS] hostname
+vps-canada-1-1-e1
+### [VPS] vlgn paths
+drwxr-xr-x  5 root   root   4096 Jun 16 12:21 /srv/apps/vlgn
+lrwxrwxrwx  1 root   root     21 Jun 16 12:21 /srv/apps/vlgn/current -> /srv/apps/vlgn/source
+drwxr-xr-x  3 root   root   4096 Jun 16 04:38 /srv/apps/vlgn/releases
+drwxr-xr-x  4 root   root   4096 Jun 16 04:38 /srv/apps/vlgn/shared
+drwxr-xr-x 14 ubuntu ubuntu 4096 Jun 16 11:50 /srv/apps/vlgn/source
+/srv/apps/vlgn/source
+/srv/apps/vlgn/source/backend
+
+### [VPS] /srv/apps/vlgn tree (2 levels)
+d /srv/apps/vlgn/releases -> 
+d /srv/apps/vlgn/releases/20260616_043849_d8029a3 -> 
+d /srv/apps/vlgn/shared -> 
+d /srv/apps/vlgn/shared/tmp -> 
+d /srv/apps/vlgn/shared/uploads -> 
+d /srv/apps/vlgn/source -> 
+d /srv/apps/vlgn/source/.git -> 
+d /srv/apps/vlgn/source/backend -> 
+d /srv/apps/vlgn/source/deploy-staging -> 
+d /srv/apps/vlgn/source/dist -> 
+d /srv/apps/vlgn/source/docs -> 
+d /srv/apps/vlgn/source/e2e -> 
+d /srv/apps/vlgn/source/infra -> 
+d /srv/apps/vlgn/source/node_modules -> 
+d /srv/apps/vlgn/source/public -> 
+d /srv/apps/vlgn/source/public_images_categories_placeholders_8images -> 
+d /srv/apps/vlgn/source/scripts -> 
+d /srv/apps/vlgn/source/src -> 
+l /srv/apps/vlgn/current -> /srv/apps/vlgn/source
+
+### [VPS] /var/www tree (2 levels)
+d /var/www/html -> 
+d /var/www/viec-lam-gan-nha -> 
+d /var/www/viec-lam-gan-nha/assets -> 
+d /var/www/viec-lam-gan-nha/data -> 
+d /var/www/viec-lam-gan-nha/images -> 
+d /var/www/viec-lam-gan-nha/js -> 
+
+### [VPS] app env / backups
+total 12
+drwxr-xr-x  2 root root 4096 Jun 16 12:22 .
+drwxr-xr-x 94 root root 4096 Jun 16 04:40 ..
+-rw-------  1 root root 1134 Jun 16 12:22 vlgn.env
+total 36
+drwxr-xr-x 9 ubuntu ubuntu 4096 Jun 16 12:09 .
+drwxr-xr-x 3 root   root   4096 Jun 15 11:02 ..
+drwxr-xr-x 3 root   root   4096 Jun 16 05:25 backend-hub-cleanup
+drwxrwxr-x 4 ubuntu ubuntu 4096 Jun 16 04:34 backend-hub-migration
+drwxr-xr-x 2 ubuntu ubuntu 4096 Jun 15 14:24 db
+drwxr-xr-x 3 root   root   4096 Jun 16 11:56 final-sqlite-before-pg-cutover
+drwxr-xr-x 9 root   root   4096 Jun 16 12:21 pg-cutover
+drwxr-xr-x 3 root   root   4096 Jun 16 06:44 pre-heroku-schema
+drwxr-xr-x 3 root   root   4096 Jun 16 11:50 pre-postgres-code-deploy
+/srv/backups/vlgn/backend-hub-cleanup
+/srv/backups/vlgn/backend-hub-cleanup/20260616_052542
+/srv/backups/vlgn/backend-hub-migration
+/srv/backups/vlgn/backend-hub-migration/20260616_043407
+/srv/backups/vlgn/backend-hub-migration/20260616_043419
+/srv/backups/vlgn/db
+/srv/backups/vlgn/final-sqlite-before-pg-cutover
+/srv/backups/vlgn/final-sqlite-before-pg-cutover/20260616_115600
+/srv/backups/vlgn/pg-cutover
+/srv/backups/vlgn/pg-cutover/20260616_120950
+/srv/backups/vlgn/pg-cutover/20260616_121317
+/srv/backups/vlgn/pg-cutover/20260616_121435
+/srv/backups/vlgn/pg-cutover/20260616_121539
+/srv/backups/vlgn/pg-cutover/20260616_121655
+/srv/backups/vlgn/pg-cutover/20260616_122014
+/srv/backups/vlgn/pg-cutover/20260616_122143
+/srv/backups/vlgn/pre-heroku-schema
+/srv/backups/vlgn/pre-heroku-schema/20260616_064429
+/srv/backups/vlgn/pre-postgres-code-deploy
+/srv/backups/vlgn/pre-postgres-code-deploy/20260616_115006
+
+### [VPS] systemd units
+nginx.service                                              enabled         enabled
+
+--- vlgn-api.service ---
+# /etc/systemd/system/vlgn-api.service
+[Unit]
+Description=VLGN Backend API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/srv/apps/vlgn/current/backend
+EnvironmentFile=/etc/app-env/vlgn.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target
+
+### [VPS] nginx sites
+total 172
+drwxr-xr-x  2 root root 4096 Jun 16 06:14 .
+drwxr-xr-x 10 root root 4096 Jun 16 06:14 ..
+-rw-r--r--  1 root root  960 Jun 16 05:17 api.vieclamgannha.me.conf
+-rw-r--r--  1 root root 2412 May 30  2023 default
+-rw-r--r--  1 root root 7561 Jun 15 13:14 viec-lam-gan-nha.conf
+-rw-r--r--  1 root root 6269 Jun  6 03:13 viec-lam-gan-nha.conf.bak.
+-rw-r--r--  1 root root 6269 Jun  6 03:16 viec-lam-gan-nha.conf.bak.20260606031623
+-rw-r--r--  1 root root 6269 Jun  6 03:17 viec-lam-gan-nha.conf.bak.20260606031712
+-rw-r--r--  1 root root 6269 Jun  6 03:18 viec-lam-gan-nha.conf.bak.20260606031814
+-rw-r--r--  1 root root 6269 Jun  6 03:19 viec-lam-gan-nha.conf.bak.20260606031920
+-rw-r--r--  1 root root 6269 Jun  6 03:21 viec-lam-gan-nha.conf.bak.20260606032129
+-rw-r--r--  1 root root 6269 Jun  6 03:26 viec-lam-gan-nha.conf.bak.20260606032648
+-rw-r--r--  1 root root 6305 Jun  6 03:31 viec-lam-gan-nha.conf.bak.20260606033149
+-rw-r--r--  1 root root 6395 Jun  6 03:32 viec-lam-gan-nha.conf.bak.20260606033252
+-rw-r--r--  1 root root 2291 Jun 14 12:24 viec-lam-gan-nha.conf.bak.autofix
+-rw-r--r--  1 root root 7289 Jun 15 11:04 viec-lam-gan-nha.conf.before-admin-fix-2026-06-15-115616
+-rw-r--r--  1 root root 7570 Jun 15 13:12 viec-lam-gan-nha.conf.before-assets-root-fix
+-rw-r--r--  1 root root 7426 Jun 14 12:46 viec-lam-gan-nha.conf.before-index-fix-2026-06-15-103948
+-rw-r--r--  1 root root 7426 Jun 14 12:46 viec-lam-gan-nha.conf.before-index-fix-2026-06-15-104125
+-rw-r--r--  1 root root 7417 Jun 15 10:41 viec-lam-gan-nha.conf.before-root-fix-2026-06-15-104351
+-rw-r--r--  1 root root 7313 Jun 15 10:48 viec-lam-gan-nha.conf.before-spa-route-fix-2026-06-15-105045
+-rw-r--r--  1 root root 7570 Jun 15 11:57 viec-lam-gan-nha.conf.before-static-path-fix
+-rw-r--r--  1 root root 7230 Jun 15 10:50 viec-lam-gan-nha.conf.before-vieclam-final-2026-06-15-110437
+-rw-r--r--  1 root root 7417 Jun 15 10:41 viec-lam-gan-nha.conf.final-root-fix-2026-06-15-104832
+total 8
+drwxr-xr-x  2 root root 4096 Jun 16 05:25 .
+drwxr-xr-x 10 root root 4096 Jun 16 06:14 ..
+lrwxrwxrwx  1 root root   52 Jun 16 05:25 api.vieclamgannha.me.conf -> /etc/nginx/sites-available/api.vieclamgannha.me.conf
+
+### [VPS] API service runtime summary
