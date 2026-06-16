@@ -41,6 +41,12 @@ async function ensureCampaignPublicColumns(db) {
   }
 }
 
+function pickCampaignVisibility({ isPublic, ctvEnabled }) {
+  if (isPublic) return 'public_candidate';
+  if (ctvEnabled) return 'ctv_private';
+  return 'draft';
+}
+
 // ============== PUBLIC API ==============
 
 // GET /api/jobs - Get public jobs
@@ -74,14 +80,16 @@ router.get('/jobs', async (req, res) => {
 
 // POST /api/company/campaigns - Create new campaign
 router.post('/company/campaigns', userAuth, async (req, res) => {
+  let db;
   try {
-    const db = await openDb();
-    
+    db = await openDb();
+
     const clerkUserId = req.user.clerkUserId;
     const company = await db.get('SELECT * FROM companies WHERE clerk_user_id = ?', clerkUserId);
-    
+
     if (!company) {
       await db.close();
+      db = null;
       return res.status(403).json({
         success: false,
         error: 'COMPANY_NOT_REGISTERED',
@@ -91,6 +99,7 @@ router.post('/company/campaigns', userAuth, async (req, res) => {
 
     if (company.status !== 'approved' && company.status !== 'active') {
       await db.close();
+      db = null;
       return res.status(403).json({
         success: false,
         error: 'COMPANY_NOT_APPROVED',
@@ -99,8 +108,9 @@ router.post('/company/campaigns', userAuth, async (req, res) => {
     }
 
     // Quota check for free plan
-    if (company.plan_code === 'free' && company.used_job_posts_count >= company.free_job_posts_limit) {
+    if (company.plan_code === 'free' && Number(company.used_job_posts_count || 0) >= Number(company.free_job_posts_limit || 0)) {
       await db.close();
+      db = null;
       return res.status(403).json({
         success: false,
         error: 'QUOTA_EXCEEDED',
@@ -113,13 +123,21 @@ router.post('/company/campaigns', userAuth, async (req, res) => {
       quantity_needed, bounty_amount, qualification_days, is_public, ctv_enabled, status
     } = req.body;
 
+    if (!title || !String(title).trim()) {
+      await db.close();
+      db = null;
+      return res.status(400).json({ success: false, error: 'MISSING_TITLE', message: 'Thiếu tiêu đề chiến dịch.' });
+    }
+
     const finalBounty = Number(bounty_amount || 0);
     const finalCtvReward = Number(req.body.ctv_reward_amount) || Math.floor(finalBounty * 0.8);
-    const finalPlatformFee = finalBounty - finalCtvReward;
-    const feePct = finalBounty > 0 ? 20 : 0;
+    const finalPlatformFee = Math.max(0, finalBounty - finalCtvReward);
+    const publicFlag = is_public === true || is_public === 1 || is_public === '1';
+    const ctvFlag = ctv_enabled === true || ctv_enabled === 1 || ctv_enabled === '1';
 
-    if (ctv_enabled && finalBounty <= 0 && !req.body.ctv_reward_amount) {
+    if (ctvFlag && finalBounty <= 0 && !req.body.ctv_reward_amount) {
       await db.close();
+      db = null;
       return res.status(400).json({
         success: false,
         error: 'MISSING_BOUNTY',
@@ -130,40 +148,43 @@ router.post('/company/campaigns', userAuth, async (req, res) => {
     const campaignId = `CP${Date.now()}`;
     const campaignCode = generateCode('CMP');
     const now = new Date().toISOString();
+    const visibility = pickCampaignVisibility({ isPublic: publicFlag, ctvEnabled: ctvFlag });
+    const safeStatus = ['draft', 'pending', 'active', 'paused', 'closed'].includes(status) ? status : 'pending';
 
     const columns = [
       'id', 'campaign_code', 'company_id', 'title', 'description', 'job_type',
       'province', 'district', 'location', 'salary_text', 'shift_text',
       'quantity_needed', 'bounty_amount', 'ctv_reward_amount', 'platform_fee_amount',
       'qualification_days', 'status', 'visibility',
-      'is_public', 'ctv_enabled', 'platform_fee_percentage',
+      'is_public', 'ctv_enabled',
       'created_at', 'updated_at'
     ];
 
-    const visibility = is_public ? 'public' : 'ctv_public';
     const values = [
-      campaignId, campaignCode, company.id, title, description, job_type,
-      province, district, location, salary_text, shift_text,
+      campaignId, campaignCode, company.id, String(title).trim(), description || '', job_type || '',
+      province || '', district || '', location || '', salary_text || '', shift_text || '',
       Number(quantity_needed || 1), finalBounty, finalCtvReward, finalPlatformFee,
-      Number(qualification_days || 7), status || 'pending', visibility,
-      is_public ? 1 : 0, ctv_enabled ? 1 : 0, feePct,
+      Number(qualification_days || 7), safeStatus, visibility,
+      publicFlag ? 1 : 0, ctvFlag ? 1 : 0,
       now, now
     ];
 
     await db.run(`INSERT INTO campaigns (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`, values);
-    await db.run('UPDATE companies SET used_job_posts_count = used_job_posts_count + 1 WHERE id = ?', company.id);
+    await db.run('UPDATE companies SET used_job_posts_count = COALESCE(used_job_posts_count, 0) + 1 WHERE id = ?', company.id);
 
     await db.run(`
       INSERT INTO audit_logs (id, entity_type, entity_id, action, actor_role, actor_id, details)
       VALUES (?, 'campaign', ?, 'created', 'company', ?, ?)
-    `, [generateCode('AUD'), campaignId, company.id, JSON.stringify({ title, bounty_amount })]);
+    `, [generateCode('AUD'), campaignId, company.id, JSON.stringify({ title, bounty_amount, visibility, status: safeStatus })]);
 
     await db.close();
+    db = null;
     return res.status(201).json({
       success: true,
-      data: { id: campaignId, campaign_code: campaignCode, title, status: status || 'pending' }
+      data: { id: campaignId, campaign_code: campaignCode, title, status: safeStatus }
     });
   } catch (error) {
+    try { await db?.close?.(); } catch {}
     console.error('Create campaign failed:', error);
     return res.status(500).json({ success: false, error: error.message });
   }
@@ -246,7 +267,7 @@ router.post('/admin/company/:id/wallet/deposit', async (req, res) => {
     }
 
     const newBalance = company.wallet_balance + Number(amount);
-    
+
     // 1. Update company balance
     await db.run('UPDATE companies SET wallet_balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [newBalance, id]);
 
@@ -293,7 +314,8 @@ router.post('/admin/company/:id/wallet/adjust', async (req, res) => {
       return res.status(404).json({ success: false, error: 'COMPANY_NOT_FOUND' });
     }
 
-    const newBalance = company.wallet_balance + Number(amount);
+    const signedAmount = Number(amount);
+    const newBalance = company.wallet_balance + signedAmount;
     if (newBalance < 0) {
       await db.run('ROLLBACK');
       await db.close();
@@ -303,10 +325,11 @@ router.post('/admin/company/:id/wallet/adjust', async (req, res) => {
     await db.run('UPDATE companies SET wallet_balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [newBalance, id]);
 
     const transId = generateCode('WAL');
+    const transactionType = signedAmount >= 0 ? 'deposit' : 'withdrawal';
     await db.run(`
       INSERT INTO wallet_transactions (id, company_id, transaction_type, amount, balance_after, reference_id, description)
-      VALUES (?, ?, 'admin_adjustment', ?, ?, NULL, ?)
-    `, [transId, id, Number(amount), newBalance, note || 'Admin adjustment']);
+      VALUES (?, ?, ?, ?, ?, NULL, ?)
+    `, [transId, id, transactionType, signedAmount, newBalance, note || 'Admin adjustment']);
 
     await db.run(`
       INSERT INTO audit_logs (id, entity_type, entity_id, action, actor_role, actor_id, details)
