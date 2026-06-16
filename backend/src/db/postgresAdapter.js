@@ -26,7 +26,8 @@ function normalizeSql(sql) {
   text = text
     .replace(/^\s*BEGIN\s+IMMEDIATE\s+TRANSACTION\s*;?$/i, 'BEGIN')
     .replace(/^\s*BEGIN\s+IMMEDIATE\s*;?$/i, 'BEGIN')
-    .replace(/INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT/gi, 'BIGSERIAL PRIMARY KEY');
+    .replace(/INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT/gi, 'BIGSERIAL PRIMARY KEY')
+    .replace(/=\s*"active"/g, "= 'active'");
 
   return text;
 }
@@ -129,7 +130,7 @@ async function ensurePostgresCompatibility(client, schema = POSTGRES_SCHEMA) {
         RETURN ts;
       END IF;
 
-      match := regexp_match(normalized_modifier, '^([+-]?\\d+)\\s+([a-z]+)$');
+      match := regexp_match(normalized_modifier, '^([+-]?\d+)\s+([a-z]+)$');
       IF match IS NULL THEN
         RETURN ts;
       END IF;
@@ -373,4 +374,3 @@ export async function createPostgresCompatDb(databaseUrl, schema = POSTGRES_SCHE
 
   return new PostgresCompatDb(client, schema);
 }
-
