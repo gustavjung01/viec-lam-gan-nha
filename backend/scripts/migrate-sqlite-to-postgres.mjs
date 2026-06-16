@@ -6,7 +6,7 @@ import { open } from 'sqlite';
 import { Client } from 'pg';
 import { initDatabase, initMarketplaceTables, db as appDb } from '../src/database.js';
 import { ensureLeadSlaSchema } from '../src/services/leadSlaEngine.js';
-import { ensureNotificationSchema } from '../src/utils/notification.js';
+import { ensureNotificationSchema } from '../src/utils/notificationSchema.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
