@@ -2,23 +2,61 @@ import sqlite3 from 'sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { createPostgresCompatDb } from './db/postgresAdapter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, '..', 'data', 'applications.db');
-const DATA_DIR = path.dirname(DB_PATH);
+const DATA_DIR = path.join(__dirname, '..', 'data');
+const DB_PATH = process.env.DATABASE_PATH || path.join(DATA_DIR, 'applications.db');
+const USE_POSTGRES = Boolean(String(process.env.DATABASE_URL || '').trim());
 
 let db = null;
 
-// Ensure data directory exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+// Ensure data directories exist
+for (const dir of new Set([DATA_DIR, path.dirname(DB_PATH)])) {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
 }
 
-export function initDatabase() {
+export async function initDatabase() {
+  if (db) return db;
+
+    if (USE_POSTGRES) {
+      return (async () => {
+        const createTableSQL = `
+          CREATE TABLE IF NOT EXISTS applications (
+            id BIGSERIAL PRIMARY KEY,
+            full_name TEXT NOT NULL,
+            phone TEXT NOT NULL,
+            area TEXT NOT NULL,
+            note TEXT,
+            job_id TEXT,
+            job_slug TEXT,
+            job_title TEXT,
+            company_code TEXT NOT NULL,
+            target_code TEXT NOT NULL,
+            telegram_sent INTEGER DEFAULT 0,
+            telegram_error TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_applications_phone ON applications(phone);
+          CREATE INDEX IF NOT EXISTS idx_applications_company ON applications(company_code);
+          CREATE INDEX IF NOT EXISTS idx_applications_created ON applications(created_at);
+        `;
+
+        db = await createPostgresCompatDb(process.env.DATABASE_URL);
+        console.log('✅ Database connected (Postgres)');
+        await db.exec(createTableSQL);
+        console.log('✅ Database initialized in schema:', 'vlgn');
+        return db;
+      })();
+    }
+
   return new Promise((resolve, reject) => {
-    if (db) return resolve(db);
     
     db = new sqlite3.Database(DB_PATH, (err) => {
       if (err) {
@@ -702,6 +740,10 @@ export { db, DB_PATH, DATA_DIR };
 
 // Helper: Open database for marketplace routes (Promise-based)
 export async function openDb() {
+  if (USE_POSTGRES) {
+    return createPostgresCompatDb(process.env.DATABASE_URL);
+  }
+
   const { open } = await import('sqlite');
   const sqlite3Module = await import('sqlite3');
   return open({

@@ -1,94 +1,66 @@
 /**
- * AI Configs CRUD operations using sqlite3 (pure JS, promise-based)
+ * AI Configs CRUD operations using the shared DB adapter.
  */
-import sqlite3 from 'sqlite3';
-import { DB_PATH } from './database.js';
+import { openDb } from './database.js';
 
-let _db = null;
-
-function getDb() {
-  if (!_db) {
-    _db = new sqlite3.Database(DB_PATH);
+async function withDb(fn) {
+  const db = await openDb();
+  try {
+    return await fn(db);
+  } finally {
+    await db.close();
   }
-  return _db;
-}
-
-function promisifyQuery(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    getDb().all(sql, params, (err, rows) => {
-      if (err) return reject(err);
-      resolve(rows);
-    });
-  });
-}
-
-function promisifyGet(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    getDb().get(sql, params, (err, row) => {
-      if (err) return reject(err);
-      resolve(row);
-    });
-  });
-}
-
-function promisifyRun(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    getDb().run(sql, params, function (err) {
-      if (err) return reject(err);
-      resolve({ changes: this.changes });
-    });
-  });
 }
 
 export async function getAllAiConfigs() {
-  return await promisifyQuery(`
+  return await withDb((db) => db.all(`
     SELECT id, name, type, provider_type, config_json, rules, status, error_reason, created_at, updated_at
     FROM ai_configs ORDER BY created_at ASC
-  `);
+  `));
 }
 
 export async function getAiConfigById(id) {
-  return await promisifyGet(`
+  return await withDb((db) => db.get(`
     SELECT id, name, type, provider_type, config_json, rules, status, error_reason, created_at, updated_at
     FROM ai_configs WHERE id = ?
-  `, [id]);
+  `, [id]));
 }
 
 export async function getAiConfigsByType(type) {
-  return await promisifyQuery(`
+  return await withDb((db) => db.all(`
     SELECT id, name, type, provider_type, config_json, rules, status, error_reason, created_at, updated_at
     FROM ai_configs WHERE type = ? ORDER BY created_at ASC
-  `, [type]);
+  `, [type]));
 }
 
 export async function getActiveChatbotConfig() {
-  return await promisifyGet(`
+  return await withDb((db) => db.get(`
     SELECT id, name, type, provider_type, config_json, rules, status, error_reason
     FROM ai_configs WHERE type = 'chatbot_main' AND status = 'active' LIMIT 1
-  `);
+  `));
 }
 
 export async function getFallbackChatbotConfig() {
-  return await promisifyGet(`
+  return await withDb((db) => db.get(`
     SELECT id, name, type, provider_type, config_json, rules, status, error_reason
     FROM ai_configs WHERE type = 'chatbot_fallback' AND status = 'active' LIMIT 1
-  `);
+  `));
 }
 
 export async function createAiConfig(data) {
   const { id, name, type, provider_type, config_json, rules, status } = data;
   const now = new Date().toISOString();
-  await promisifyRun(`
+  await withDb((db) => db.run(`
     INSERT INTO ai_configs (id, name, type, provider_type, config_json, rules, status, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `, [id, name, type, provider_type, config_json, rules || '', status || 'inactive', now, now]);
+  `, [id, name, type, provider_type, config_json, rules || '', status || 'inactive', now, now]));
   return await getAiConfigById(id);
 }
 
 export async function updateAiConfig(id, data) {
   const { name, provider_type, config_json, rules, status, error_reason } = data;
   const now = new Date().toISOString();
-  const result = await promisifyRun(`
+  const result = await withDb((db) => db.run(`
     UPDATE ai_configs
     SET name = COALESCE(?, name),
         provider_type = COALESCE(?, provider_type),
@@ -98,12 +70,12 @@ export async function updateAiConfig(id, data) {
         error_reason = ?,
         updated_at = ?
     WHERE id = ?
-  `, [name, provider_type, config_json, rules, status, error_reason || null, now, id]);
+  `, [name, provider_type, config_json, rules, status, error_reason || null, now, id]));
   return result.changes > 0;
 }
 
 export async function deleteAiConfig(id) {
-  const result = await promisifyRun('DELETE FROM ai_configs WHERE id = ?', [id]);
+  const result = await withDb((db) => db.run('DELETE FROM ai_configs WHERE id = ?', [id]));
   return result.changes > 0;
 }
 
