@@ -5,6 +5,8 @@ import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import { Client } from 'pg';
 import { initDatabase, initMarketplaceTables, db as appDb } from '../src/database.js';
+import { ensureLeadSlaSchema } from '../src/services/leadSlaEngine.js';
+import { ensureNotificationSchema } from '../src/utils/notificationSchema.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -96,6 +98,42 @@ async function getSqliteTables(sqliteDb) {
   return names.filter((name) => requestedTables.has(name));
 }
 
+async function orderTablesByDependencies(sqliteDb, tables) {
+  const tableSet = new Set(tables);
+  const graph = new Map();
+
+  for (const table of tables) {
+    const fkRows = await sqliteDb.all(`PRAGMA foreign_key_list(${quoteIdent(table)})`);
+    const deps = fkRows
+      .map((row) => row.table)
+      .filter((depTable) => tableSet.has(depTable) && depTable !== table);
+    graph.set(table, deps);
+  }
+
+  const ordered = [];
+  const visiting = new Set();
+  const visited = new Set();
+
+  function visit(table) {
+    if (visited.has(table)) return;
+    if (visiting.has(table)) return;
+
+    visiting.add(table);
+    for (const dep of graph.get(table) || []) {
+      visit(dep);
+    }
+    visiting.delete(table);
+    visited.add(table);
+    ordered.push(table);
+  }
+
+  for (const table of tables) {
+    visit(table);
+  }
+
+  return ordered;
+}
+
 async function getSqliteColumns(sqliteDb, table) {
   const rows = await sqliteDb.all(`PRAGMA table_info(${quoteIdent(table)})`);
   return rows.map((row) => row.name);
@@ -132,6 +170,8 @@ async function initializeTargetSchema(databaseUrl) {
   process.env.DATABASE_URL = databaseUrl;
   await initDatabase();
   await initMarketplaceTables();
+  await ensureLeadSlaSchema();
+  await ensureNotificationSchema();
 
   if (appDb && typeof appDb.close === 'function') {
     await appDb.close();
@@ -250,7 +290,7 @@ async function main() {
   };
 
   try {
-    const tables = await getSqliteTables(sqliteDb);
+    const tables = await orderTablesByDependencies(sqliteDb, await getSqliteTables(sqliteDb));
 
     if (!writeEnabled) {
       client = await createPgClient(databaseUrl);
