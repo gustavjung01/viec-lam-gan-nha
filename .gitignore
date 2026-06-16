@@ -19,6 +19,18 @@ backend/.env.local.admin
 
 # Keys and secrets (local-only)
 docs/keys.md
+.ssh/
+*.key
+*.pem
+*.ppk
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+ssh-key*
+deploy_key*
+*private*key*
+known_hosts
 
 # Logs
 *.log
