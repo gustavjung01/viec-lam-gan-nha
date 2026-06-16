@@ -1,7 +1,37 @@
 const SDK_URL = ['https://cdn.onesignal.com', 'sdks/web/v16/OneSignalSDK.page.js'].join('/');
+const DEFAULT_ONESIGNAL_ORIGIN = 'https://vieclamgannha.me';
 
 function w(): any {
   return window as any;
+}
+
+function normalizeOrigin(value: string) {
+  return String(value || '').trim().replace(/\/+$/, '');
+}
+
+function readAllowedOrigins() {
+  const configured = String(
+    import.meta.env.VITE_ONESIGNAL_ALLOWED_ORIGINS ||
+    import.meta.env.VITE_ONESIGNAL_SITE_ORIGIN ||
+    DEFAULT_ONESIGNAL_ORIGIN
+  );
+
+  return configured
+    .split(',')
+    .map((origin) => normalizeOrigin(origin))
+    .filter(Boolean);
+}
+
+function canStartOneSignal() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return false;
+  if (!window.location.pathname.startsWith('/admin')) return false;
+
+  const appId = import.meta.env.VITE_ONESIGNAL_APP_ID;
+  if (!appId) return false;
+
+  const currentOrigin = normalizeOrigin(window.location.origin);
+  const allowedOrigins = readAllowedOrigins();
+  return allowedOrigins.includes(currentOrigin);
 }
 
 function loadSdk() {
@@ -35,12 +65,10 @@ function readPlayerId(oneSignal: any) {
 }
 
 export function initAdminOneSignal() {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  if (!window.location.pathname.startsWith('/admin')) return;
+  if (!canStartOneSignal()) return;
   if (w().__vlgnAdminOneSignalStarted) return;
 
   const appId = import.meta.env.VITE_ONESIGNAL_APP_ID;
-  if (!appId) return;
 
   w().__vlgnAdminOneSignalStarted = true;
   w().OneSignalDeferred = w().OneSignalDeferred || [];
