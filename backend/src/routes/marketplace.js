@@ -60,7 +60,11 @@ router.get('/jobs', async (req, res) => {
       SELECT c.id, c.campaign_code, c.title, c.job_type, c.location, c.province, c.district,
              c.salary_text, c.shift_text, c.quantity_needed, c.updated_at,
              comp.name as company_name, comp.company_code,
-             CASE WHEN c.promoted_until IS NOT NULL AND c.promoted_until > datetime('now') THEN 1 ELSE 0 END as is_promoted
+             CASE
+               WHEN c.promoted_until IS NOT NULL
+                 AND datetime(c.promoted_until) > datetime('now') THEN 1
+               ELSE 0
+             END as is_promoted
       FROM campaigns c
       JOIN companies comp ON c.company_id = comp.id
       WHERE c.status = 'active' AND COALESCE(c.is_public, 1) = 1
