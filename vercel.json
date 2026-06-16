@@ -1,6 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- src public index.html package.json package-lock.json vite.config.js vite.config.ts vite.config.mjs vite.config.mts tsconfig.json tsconfig.app.json tsconfig.node.json tailwind.config.js tailwind.config.ts postcss.config.js postcss.config.ts vercel.json scripts/verify-frontend-env.mjs scripts/generate-build-info.mjs",
+  "git": {
+    "deploymentEnabled": {
+      "backend": false,
+      "platform": false
+    }
+  },
   "rewrites": [
     {
       "source": "/api/:path*",
