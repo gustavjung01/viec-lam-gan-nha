@@ -1,5 +1,5 @@
-type OneSignalLike = {
-  init?: (options: Record<string, any>) => Promise<void> | void;
+type OneSignalSdk = {
+  init?: (options: { appId: string; allowLocalhostAsSecureOrigin?: boolean }) => Promise<void> | void;
   Notifications?: {
     permission?: boolean;
     requestPermission?: () => Promise<boolean> | boolean;
@@ -8,15 +8,15 @@ type OneSignalLike = {
     PushSubscription?: {
       id?: string | null;
       token?: string | null;
+      optedIn?: boolean;
       optIn?: () => Promise<void> | void;
-      addEventListener?: (event: string, handler: (event: any) => void) => void;
     };
   };
 };
 
 declare global {
   interface Window {
-    OneSignalDeferred?: Array<(oneSignal: OneSignalLike) => void | Promise<void>>;
+    OneSignalDeferred?: Array<(oneSignal: OneSignalSdk) => void>;
     __vlgnAdminOneSignalStarted?: boolean;
     __vlgnAdminOneSignalLastPlayerId?: string;
   }
@@ -41,10 +41,8 @@ function getAdminToken() {
   }
 }
 
-function getCurrentPlayerId(oneSignal: OneSignalLike, changeEvent?: any) {
+function getCurrentPlayerId(oneSignal: OneSignalSdk) {
   return String(
-    changeEvent?.current?.id ||
-    changeEvent?.current?.token ||
     oneSignal.User?.PushSubscription?.id ||
     oneSignal.User?.PushSubscription?.token ||
     ''
@@ -53,8 +51,8 @@ function getCurrentPlayerId(oneSignal: OneSignalLike, changeEvent?: any) {
 
 async function subscribeAdminDevice(playerId: string) {
   const token = getAdminToken();
-  if (!token || !playerId) return;
-  if (window.__vlgnAdminOneSignalLastPlayerId === playerId) return;
+  if (!token || !playerId) return false;
+  if (window.__vlgnAdminOneSignalLastPlayerId === playerId) return true;
 
   const response = await fetch(SUBSCRIBE_ENDPOINT, {
     method: 'POST',
@@ -71,6 +69,23 @@ async function subscribeAdminDevice(playerId: string) {
   }
 
   window.__vlgnAdminOneSignalLastPlayerId = playerId;
+  return true;
+}
+
+function startSubscribeRetry(oneSignal: OneSignalSdk) {
+  const retry = window.setInterval(async () => {
+    const playerId = getCurrentPlayerId(oneSignal);
+    if (!playerId || !getAdminToken()) return;
+
+    try {
+      const ok = await subscribeAdminDevice(playerId);
+      if (ok) window.clearInterval(retry);
+    } catch (error) {
+      console.warn('[OneSignal] Admin retry subscribe failed:', error);
+    }
+  }, 5000);
+
+  window.setTimeout(() => window.clearInterval(retry), 60000);
 }
 
 export function initAdminOneSignal() {
@@ -86,45 +101,33 @@ export function initAdminOneSignal() {
 
   window.__vlgnAdminOneSignalStarted = true;
   window.OneSignalDeferred = window.OneSignalDeferred || [];
-  window.OneSignalDeferred.push(async (OneSignal) => {
-    try {
-      await OneSignal.init?.({
-        appId,
-        allowLocalhostAsSecureOrigin: true,
-        serviceWorkerPath: '/OneSignalSDKWorker.js',
-        serviceWorkerParam: { scope: '/' },
-      });
-
+  window.OneSignalDeferred.push((OneSignal) => {
+    void (async () => {
       try {
-        await OneSignal.User?.PushSubscription?.optIn?.();
-      } catch {
-        // The user/browser can refuse permission. Keep admin UI alive.
-      }
+        await OneSignal.init?.({ appId, allowLocalhostAsSecureOrigin: true });
 
-      if (OneSignal.Notifications && OneSignal.Notifications.permission === false) {
         try {
-          await OneSignal.Notifications.requestPermission?.();
+          await OneSignal.User?.PushSubscription?.optIn?.();
         } catch {
-          // Permission prompt may be blocked by the browser. Keep polling for subscription changes.
+          // Browser/user may refuse permission.
         }
+
+        if (OneSignal.Notifications && OneSignal.Notifications.permission === false) {
+          try {
+            await OneSignal.Notifications.requestPermission?.();
+          } catch {
+            // Prompt may be blocked.
+          }
+        }
+
+        const playerId = getCurrentPlayerId(OneSignal);
+        if (playerId) await subscribeAdminDevice(playerId);
+        startSubscribeRetry(OneSignal);
+      } catch (error) {
+        console.warn('[OneSignal] Admin init failed:', error);
+        window.__vlgnAdminOneSignalStarted = false;
       }
-
-      const playerId = getCurrentPlayerId(OneSignal);
-      if (playerId) await subscribeAdminDevice(playerId);
-
-      OneSignal.User?.PushSubscription?.addEventListener?.('change', async (event: any) => {
-        const nextPlayerId = getCurrentPlayerId(OneSignal, event);
-        if (!nextPlayerId) return;
-        try {
-          await subscribeAdminDevice(nextPlayerId);
-        } catch (error) {
-          console.warn('[OneSignal] Admin device subscribe failed:', error);
-        }
-      });
-    } catch (error) {
-      console.warn('[OneSignal] Admin init failed:', error);
-      window.__vlgnAdminOneSignalStarted = false;
-    }
+    })();
   });
 
   loadOneSignalScript();
