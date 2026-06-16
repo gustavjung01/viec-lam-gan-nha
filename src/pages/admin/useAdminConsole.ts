@@ -210,53 +210,67 @@ export function useAdminConsole() {
       setLoading(true);
       setError(null);
 
-      const responses = await Promise.all([
-        adminFetch(token, '/admin/campaigns'),
-        adminFetch(token, '/admin/leads?page=1&limit=10'),
-        adminFetch(token, '/admin/all-ctv'),
-        adminFetch(token, '/admin/all-companies'),
-        adminFetch(token, '/admin/audit-logs?limit=10'),
-        adminFetch(token, '/admin/tax-report'),
+      const loadSection = async (
+        label: string,
+        path: string,
+        applyData: (payload: any) => void,
+      ) => {
+        try {
+          const res = await adminFetch(token, path, { cache: 'no-store' });
+          let payload: any = {};
+          try {
+            payload = await res.json();
+          } catch {
+            payload = {};
+          }
+
+          if (!res.ok || payload.success === false) {
+            const message = payload.message || payload.error || `HTTP ${res.status}`;
+            return `${label}: ${message}`;
+          }
+
+          applyData(payload);
+          return null;
+        } catch (err: any) {
+          if (err?.message === 'UNAUTHORIZED') throw err;
+          return `${label}: ${err?.message || 'Lỗi API'}`;
+        }
+      };
+
+      const failures = await Promise.all([
+        loadSection('Chiến dịch', '/admin/campaigns', (payload) => setCampaigns(payload.data || [])),
+        loadSection('Lead', '/admin/leads?page=1&limit=10', (payload) => {
+          setLeads(payload.data || []);
+          if (payload.pagination) setLeadsPagination(payload.pagination);
+        }),
+        loadSection('CTV', '/admin/all-ctv', (payload) => setCtvAccounts(payload.data || [])),
+        loadSection('Công ty', '/admin/all-companies', (payload) => setCompanyAccounts(payload.data || [])),
+        loadSection('Nhật ký', '/admin/audit-logs?limit=10', (payload) => setAuditLogs(payload.data || [])),
+        loadSection('Tài chính', '/admin/tax-report', (payload) => {
+          const data = payload.data || {};
+          const normalizedTaxReport = data.summary && Array.isArray(data.qualified_leads)
+            ? data
+            : {
+                summary: {
+                  total_qualified_leads: data.total_qualified_leads || 0,
+                  total_company_bounty: data.total_company_charged || data.total_company_bounty || 0,
+                  total_platform_fees_20_percent: data.total_platform_revenue || data.total_platform_fees_20_percent || 0,
+                  total_ctv_payouts_80_percent: data.total_ctv_payable || data.total_ctv_payouts_80_percent || 0,
+                },
+                qualified_leads: data.qualified_leads || [],
+                platform_fees: data.platform_fees || [],
+                ctv_payouts: data.ctv_payouts || [],
+                pending_company_debt: data.pending_company_debt || [],
+                split_verification: data.split_verification || { math_check: true },
+                period: data.period,
+              };
+          setTaxReport(normalizedTaxReport);
+        }),
       ]);
 
-      const [campaignsRes, leadsRes, ctvRes, companyRes, logsRes, taxRes] = responses;
-
-      if (campaignsRes.ok) setCampaigns((await campaignsRes.json()).data);
-      if (leadsRes.ok) {
-        const data = await leadsRes.json();
-        setLeads(data.data);
-        if (data.pagination) setLeadsPagination(data.pagination);
-      }
-      if (ctvRes.ok) setCtvAccounts((await ctvRes.json()).data);
-      if (companyRes.ok) setCompanyAccounts((await companyRes.json()).data);
-      if (logsRes.ok) setAuditLogs((await logsRes.json()).data);
-      if (taxRes.ok) {
-        const taxData = await taxRes.json();
-        const payload = taxData.data || {};
-        const normalizedTaxReport = payload.summary && Array.isArray(payload.qualified_leads)
-          ? payload
-          : {
-              summary: {
-                total_qualified_leads: payload.total_qualified_leads || 0,
-                total_company_bounty: payload.total_company_charged || payload.total_company_bounty || 0,
-                total_platform_fees_20_percent: payload.total_platform_revenue || payload.total_platform_fees_20_percent || 0,
-                total_ctv_payouts_80_percent: payload.total_ctv_payable || payload.total_ctv_payouts_80_percent || 0,
-              },
-              qualified_leads: payload.qualified_leads || [],
-              platform_fees: payload.platform_fees || [],
-              ctv_payouts: payload.ctv_payouts || [],
-              pending_company_debt: payload.pending_company_debt || [],
-              split_verification: payload.split_verification || { math_check: true },
-              period: payload.period,
-            };
-        setTaxReport(normalizedTaxReport);
-      }
-
-      if (!campaignsRes.ok || !leadsRes.ok || !ctvRes.ok || !companyRes.ok || !logsRes.ok || !taxRes.ok) {
-        const errorData = await (
-          campaignsRes.ok ? leadsRes.ok ? ctvRes.ok ? companyRes.ok ? logsRes.ok ? taxRes : logsRes : companyRes : ctvRes : leadsRes : campaignsRes
-        ).json();
-        throw new Error(`Không thể tải được dữ liệu admin: ${errorData.message || 'Lỗi API'}`);
+      const realFailures = failures.filter(Boolean) as string[];
+      if (realFailures.length > 0) {
+        setError(`Một số dữ liệu admin chưa tải được: ${realFailures.join(' | ')}`);
       }
     } catch (err: any) {
       console.error('API Error:', err);
