@@ -6,27 +6,45 @@ import { listNotificationsForRecipient, subscribeUser } from '../utils/notificat
 
 const router = Router();
 
-// Helper to verify password hash
-async function verifyPassword(password, storedHash) {
-  if (!storedHash || !password) return false;
+function normalizeEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
 
-  const parts = String(storedHash).split(':');
+function isValidPasswordHash(storedHash) {
+  const parts = String(storedHash || '').trim().split(':');
   if (parts.length !== 3) return false;
-
   const [algo, saltHex, hashHex] = parts;
   if (algo !== 'pbkdf2' || !saltHex || !hashHex) return false;
+  if (!/^[0-9a-f]+$/i.test(saltHex) || !/^[0-9a-f]+$/i.test(hashHex)) return false;
+  return saltHex.length % 2 === 0 && hashHex.length % 2 === 0;
+}
 
-  const salt = Buffer.from(saltHex, 'hex');
-  const storedDerivedKey = Buffer.from(hashHex, 'hex');
-  if (salt.length === 0 || storedDerivedKey.length === 0) return false;
+// Helper to verify password hash
+async function verifyPassword(password, storedHash) {
+  if (!storedHash || !password || !isValidPasswordHash(storedHash)) return false;
 
-  return new Promise(resolve => {
-    crypto.pbkdf2(password, salt, 100000, 64, 'sha512', (err, derivedKey) => {
-      if (err) return resolve(false);
-      if (derivedKey.length !== storedDerivedKey.length) return resolve(false);
-      resolve(crypto.timingSafeEqual(derivedKey, storedDerivedKey));
+  try {
+    const [algo, saltHex, hashHex] = String(storedHash).trim().split(':');
+    if (algo !== 'pbkdf2') return false;
+
+    const salt = Buffer.from(saltHex, 'hex');
+    const storedDerivedKey = Buffer.from(hashHex, 'hex');
+    if (salt.length === 0 || storedDerivedKey.length === 0) return false;
+
+    return await new Promise(resolve => {
+      crypto.pbkdf2(password, salt, 100000, storedDerivedKey.length, 'sha512', (err, derivedKey) => {
+        if (err) return resolve(false);
+        if (derivedKey.length !== storedDerivedKey.length) return resolve(false);
+        try {
+          resolve(crypto.timingSafeEqual(derivedKey, storedDerivedKey));
+        } catch {
+          resolve(false);
+        }
+      });
     });
-  });
+  } catch {
+    return false;
+  }
 }
 
 // Function to create a JWT-like token using HMAC
@@ -81,37 +99,53 @@ async function unreadAdminNotificationCount(db) {
 
 // POST /api/admin/auth/login
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
+  try {
+    const email = normalizeEmail(req.body?.email);
+    const password = String(req.body?.password || '');
 
-  const ADMIN_LOGIN_EMAIL = process.env.ADMIN_LOGIN_EMAIL;
-  const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH;
-  const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET;
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: 'MISSING_ADMIN_CREDENTIALS' });
+    }
 
-  if (!ADMIN_LOGIN_EMAIL || !ADMIN_PASSWORD_HASH || !ADMIN_SESSION_SECRET) {
-    return res.status(503).json({ success: false, message: 'ADMIN_LOGIN_NOT_CONFIGURED' });
+    const ADMIN_LOGIN_EMAIL = normalizeEmail(process.env.ADMIN_LOGIN_EMAIL);
+    const ADMIN_PASSWORD_HASH = String(process.env.ADMIN_PASSWORD_HASH || '').trim();
+    const ADMIN_SESSION_SECRET = String(process.env.ADMIN_SESSION_SECRET || '').trim();
+
+    if (!ADMIN_LOGIN_EMAIL || !ADMIN_PASSWORD_HASH || !ADMIN_SESSION_SECRET) {
+      console.error('[AdminAuth] Missing admin login env');
+      return res.status(503).json({ success: false, message: 'ADMIN_LOGIN_NOT_CONFIGURED' });
+    }
+
+    if (!isValidPasswordHash(ADMIN_PASSWORD_HASH)) {
+      console.error('[AdminAuth] Invalid ADMIN_PASSWORD_HASH format');
+      return res.status(503).json({ success: false, message: 'ADMIN_LOGIN_NOT_CONFIGURED' });
+    }
+
+    if (email !== ADMIN_LOGIN_EMAIL) {
+      return res.status(401).json({ success: false, message: 'Email hoặc mật khẩu quản trị không đúng' });
+    }
+
+    const isPasswordValid = await verifyPassword(password, ADMIN_PASSWORD_HASH);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({ success: false, message: 'Email hoặc mật khẩu quản trị không đúng' });
+    }
+
+    // Generate session token
+    const payload = {
+      email: ADMIN_LOGIN_EMAIL,
+      role: 'super_admin',
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + (60 * 60 * 8) // 8 hours expiry
+    };
+
+    const sessionToken = createSessionToken(payload, ADMIN_SESSION_SECRET);
+
+    return res.json({ success: true, token: sessionToken });
+  } catch (error) {
+    console.error('[AdminAuth] Login failed:', error);
+    return res.status(500).json({ success: false, message: 'ADMIN_LOGIN_FAILED' });
   }
-
-  if (email !== ADMIN_LOGIN_EMAIL) {
-    return res.status(401).json({ success: false, message: 'Email hoặc mật khẩu quản trị không đúng' });
-  }
-
-  const isPasswordValid = await verifyPassword(password, ADMIN_PASSWORD_HASH);
-
-  if (!isPasswordValid) {
-    return res.status(401).json({ success: false, message: 'Email hoặc mật khẩu quản trị không đúng' });
-  }
-
-  // Generate session token
-  const payload = {
-    email: ADMIN_LOGIN_EMAIL,
-    role: 'super_admin',
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + (60 * 60 * 8) // 8 hours expiry
-  };
-
-  const sessionToken = createSessionToken(payload, ADMIN_SESSION_SECRET);
-
-  return res.json({ success: true, token: sessionToken });
 });
 
 // GET /api/admin/auth/me (protected by adminAuth middleware)
