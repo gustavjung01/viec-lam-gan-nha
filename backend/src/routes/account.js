@@ -80,16 +80,20 @@ function companyPayload(row, email) {
 }
 
 async function getAccountNotificationRoles(clerkUserId) {
-  const db = await openDb();
+  let db;
   try {
+    db = await openDb();
     const roles = ['user'];
     const ctvAccount = await db.get('SELECT id FROM ctv_accounts WHERE clerk_user_id = ?', [clerkUserId]);
     const companyAccount = await db.get('SELECT id FROM companies WHERE clerk_user_id = ?', [clerkUserId]);
     if (ctvAccount) roles.push('ctv');
     if (companyAccount) roles.push('company');
     return roles;
+  } catch (error) {
+    console.error('Get account notification roles failed:', error);
+    return ['user'];
   } finally {
-    await db.close();
+    try { await db?.close?.(); } catch {}
   }
 }
 
@@ -145,6 +149,7 @@ router.post('/notifications/subscribe', userAuth, async (req, res) => {
     const result = await subscribeUser(clerkUserId, role || 'guest', playerId, entityId);
     res.json(result);
   } catch (error) {
+    console.error('Account notification subscribe failed:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -165,7 +170,13 @@ router.get('/notifications', userAuth, async (req, res) => {
     res.json({ success: true, data: result.items, pagination: result.pagination, unreadCount: result.unreadCount });
   } catch (error) {
     console.error('Get account notifications failed:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.json({
+      success: true,
+      data: [],
+      pagination: { limit: 20, offset: 0, nextOffset: null, hasMore: false },
+      unreadCount: 0,
+      warning: 'ACCOUNT_NOTIFICATIONS_UNAVAILABLE',
+    });
   }
 });
 
@@ -285,6 +296,7 @@ clerkLookupRoutes.get('/company/by-clerk/:clerkId', userAuth, async (req, res) =
 // GET /api/account/me - Get current user's account status
 router.get('/me', async (req, res) => {
   let db;
+  const fallbackEmail = req.user?.email || null;
   try {
     db = await openDb();
     const { clerkUserId, email } = req.user;
@@ -347,7 +359,11 @@ router.get('/me', async (req, res) => {
   } catch (error) {
     try { await db?.close?.(); } catch {}
     console.error('Get account status failed:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.json({
+      success: true,
+      data: { ctv: null, company: null, email: fallbackEmail },
+      warning: 'ACCOUNT_STATUS_UNAVAILABLE',
+    });
   }
 });
 
