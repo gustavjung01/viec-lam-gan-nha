@@ -28,21 +28,14 @@ export function Header() {
     const checkStatuses = async () => {
       try {
         const token = await getToken();
-
-        const ctvRes = await fetch(`/api/ctv/by-clerk/${userId}`, {
+        const res = await fetch('/api/account/me', {
           headers: { Authorization: `Bearer ${token}` }
         });
-        const ctvData = await ctvRes.json();
-        if (ctvData.success && ctvData.data) {
-          setCtvStatus(ctvData.data.status);
-        }
-
-        const companyRes = await fetch(`/api/company/by-clerk/${userId}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const companyData = await companyRes.json();
-        if (companyData.success && companyData.data) {
-          setCompanyStatus(companyData.data.status);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.success && data.data) {
+          setCtvStatus(data.data.ctv?.status || null);
+          setCompanyStatus(data.data.company?.status || null);
         }
       } catch (err) {
         // Không tìm thấy = chưa đăng ký
