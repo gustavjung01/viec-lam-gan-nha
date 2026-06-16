@@ -8,7 +8,8 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "import-fix": "node import-vps-fix.cjs",
-    "finance:mount": "node scripts/mount-finance-routes.cjs"
+    "finance:mount": "node scripts/mount-finance-routes.cjs",
+    "db:test:pg-ro": "node scripts/test-postgres-readonly.mjs"
   },
   "dependencies": {
     "@clerk/backend": "^3.4.14",
@@ -18,6 +19,7 @@
     "express-rate-limit": "^7.5.0",
     "node-fetch": "^3.3.2",
     "node-telegram-bot-api": "^0.66.0",
+    "pg": "^8.15.6",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7",
     "zod": "^3.24.1"
