@@ -29,7 +29,10 @@ function normalizeSql(sql) {
     .replace(/^\s*BEGIN\s+IMMEDIATE\s+TRANSACTION\s*;?$/i, 'BEGIN')
     .replace(/^\s*BEGIN\s+IMMEDIATE\s*;?$/i, 'BEGIN')
     .replace(/INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT/gi, 'BIGSERIAL PRIMARY KEY')
-    .replace(/=\s*"active"/g, "= 'active'");
+    .replace(/=\s*"active"/g, "= 'active'")
+    .replace(/GROUP BY c\.id\s+ORDER BY/g, 'GROUP BY c.id, comp.name, comp.company_code ORDER BY')
+    .replace(/c\.company_id,\s*comp\.name AS company_name,\s*comp\.company_code,\s*COUNT\(\*\) AS pending_count,/g, 'c.company_id, MAX(comp.name) AS company_name, MAX(comp.company_code) AS company_code, COUNT(*) AS pending_count,')
+    .replace(/ORDER BY total_pending_fees DESC, comp\.name ASC/g, 'ORDER BY total_pending_fees DESC, MAX(comp.name) ASC');
 
   return text;
 }
