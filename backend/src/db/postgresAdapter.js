@@ -2,6 +2,8 @@ import { Client } from 'pg';
 
 export const POSTGRES_SCHEMA = 'vlgn';
 
+const compatibilityPromises = new Map();
+
 function normalizeParams(params) {
   if (params === undefined || params === null) return [];
   if (Array.isArray(params)) return params;
@@ -176,6 +178,18 @@ async function ensurePostgresCompatibility(client, schema = POSTGRES_SCHEMA) {
     WHERE n.nspname = current_schema()
       AND c.relkind IN ('r', 'v', 'i', 'S');
   `);
+}
+
+async function ensurePostgresCompatibilityOnce(client, schema = POSTGRES_SCHEMA) {
+  const key = String(schema || POSTGRES_SCHEMA);
+  if (!compatibilityPromises.has(key)) {
+    const promise = ensurePostgresCompatibility(client, key).catch((error) => {
+      compatibilityPromises.delete(key);
+      throw error;
+    });
+    compatibilityPromises.set(key, promise);
+  }
+  return compatibilityPromises.get(key);
 }
 
 function parsePragmaTableInfo(sql) {
@@ -369,7 +383,7 @@ export async function createPostgresCompatDb(databaseUrl, schema = POSTGRES_SCHE
   });
 
   await client.connect();
-  await ensurePostgresCompatibility(client, schema);
+  await ensurePostgresCompatibilityOnce(client, schema);
   await client.query(`SET search_path TO ${schema}, public`);
 
   return new PostgresCompatDb(client, schema);
