@@ -4,6 +4,29 @@ function w(): any {
   return window as any;
 }
 
+function readEnabledFlag() {
+  return String(import.meta.env.VITE_ONESIGNAL_ENABLED || '').trim().toLowerCase() === 'true';
+}
+
+function readAllowedOrigins() {
+  return String(import.meta.env.VITE_ONESIGNAL_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+}
+
+function canStartOneSignal() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return false;
+  if (!window.location.pathname.startsWith('/admin')) return false;
+  if (!readEnabledFlag()) return false;
+
+  const allowedOrigins = readAllowedOrigins();
+  if (allowedOrigins.length === 0) return false;
+
+  const currentOrigin = window.location.origin.replace(/\/+$/, '');
+  return allowedOrigins.includes(currentOrigin);
+}
+
 function loadSdk() {
   if (document.querySelector('script[data-vlgn-onesignal="1"]')) return;
   const script = document.createElement('script');
@@ -35,8 +58,7 @@ function readPlayerId(oneSignal: any) {
 }
 
 export function initAdminOneSignal() {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return;
-  if (!window.location.pathname.startsWith('/admin')) return;
+  if (!canStartOneSignal()) return;
   if (w().__vlgnAdminOneSignalStarted) return;
 
   const appId = import.meta.env.VITE_ONESIGNAL_APP_ID;
