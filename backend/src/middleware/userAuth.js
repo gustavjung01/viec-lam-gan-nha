@@ -37,6 +37,7 @@ export async function userAuth(req, res, next) {
       secretKey,
       authorizedParties: [
         'https://vieclamgannha.me',
+        'https://www.vieclamgannha.me',
         'https://preview.vieclamgannha.me',
         'http://localhost:5173',
       ],
