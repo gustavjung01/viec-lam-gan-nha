@@ -7,6 +7,7 @@ import './lib/aiInlineResultModalBridge';
 import './lib/companyLeadWorkflowBridge';
 import './lib/adminLeadWorkflowBridge';
 import './lib/adminLeadHistoryBridge';
+import './lib/adminCompanyActionBridge';
 import { registerPwaServiceWorker } from './lib/pwaRegistration';
 import { registerAdminPwaServiceWorker } from './lib/adminPwaRegistration';
 import { syncAdminPwaMetadata } from './lib/adminPwa';
