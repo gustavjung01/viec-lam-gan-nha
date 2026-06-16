@@ -170,6 +170,75 @@ Domains:
 
 Use staging before production for DB migration, admin/company/CTV flows, PWA, and notification tests.
 
+### 3.7 Canonical DNS and domain structure
+
+Decision:
+
+```text
+The main public domain belongs to Vercel, not to a VPS IP.
+VPS machines are addressed by subdomains only when they expose a public service.
+Database and internal workers must not be public unless there is a deliberate, firewall-protected reason.
+```
+
+Canonical production map:
+
+```text
+vieclamgannha.me              -> Vercel frontend production
+www.vieclamgannha.me          -> Vercel frontend redirect or same project
+api.vieclamgannha.me          -> VPS-2 backend API public reverse proxy
+staging.vieclamgannha.me      -> Vercel frontend staging/preview alias
+api-staging.vieclamgannha.me  -> staging backend API
+```
+
+Internal or non-public map:
+
+```text
+db.vieclamgannha.me           -> avoid public DNS by default; use private IP/VPN/firewall if needed
+worker.vieclamgannha.me       -> avoid public DNS by default; worker pulls jobs and should not expose public HTTP unless required
+monitor.vieclamgannha.me      -> optional, protected dashboard only
+```
+
+DNS ownership options:
+
+```text
+Preferred: move DNS nameservers to Vercel after all required records are documented.
+Alternative: keep DNS at the current registrar/Cloudflare and point only the required records to Vercel/VPS.
+```
+
+Record-level target if DNS is not fully moved to Vercel:
+
+```text
+@ / apex vieclamgannha.me      -> Vercel project, using the record Vercel dashboard provides
+www                            -> Vercel project, using the record Vercel dashboard provides
+api                            -> A record to VPS-2 public IP
+api-staging                    -> A record to staging backend public IP
+staging                        -> Vercel project/preview alias, using the record Vercel dashboard provides
+```
+
+Rules:
+
+```text
+- Do not point vieclamgannha.me apex to the old VPS after Vercel cutover.
+- Do not serve frontend from VPS after Vercel cutover.
+- Do not put /api behind the frontend domain unless Vercel rewrites are intentionally designed and tested.
+- Prefer explicit API domain: https://api.vieclamgannha.me.
+- Keep old VPS available during transition under a temporary hostname only, not the main domain.
+```
+
+Cutover order:
+
+```text
+1. Create Vercel project and preview deployment.
+2. Keep current production DNS unchanged while preview is tested.
+3. Bring up api.vieclamgannha.me on VPS-2 or current backend temporarily.
+4. Configure frontend env VITE_API_BASE_URL=https://api.vieclamgannha.me.
+5. Smoke test preview against API.
+6. Add vieclamgannha.me and www.vieclamgannha.me to Vercel.
+7. Change DNS for apex/www to Vercel only after preview passes.
+8. Keep old VPS frontend untouched but no longer authoritative.
+9. Remove old frontend/Nginx routing only after production is verified.
+```
+
 ## 4. Repo cleanup plan
 
 ### 4.1 Planning cleanup
@@ -252,6 +321,7 @@ Tasks:
 5. Backup env files with secrets redacted in audit notes.
 6. Export DB schema and row counts.
 7. Record current frontend build-info and backend commit/version.
+8. Record current DNS provider, nameservers, and all DNS records before any cutover.
 ```
 
 Acceptance:
@@ -259,6 +329,7 @@ Acceptance:
 ```text
 - Current state can be restored if needed.
 - We know exactly what is live.
+- Current DNS can be restored if needed.
 - No code has been changed during audit.
 ```
 
@@ -303,13 +374,15 @@ Tasks:
 4. Set VITE_API_BASE_URL to API domain.
 5. Deploy preview first.
 6. Verify Home, Jobs, Job Detail, Apply.
-7. Point domain to Vercel only after preview passes.
+7. Add vieclamgannha.me and www.vieclamgannha.me to Vercel.
+8. Point apex/www DNS to Vercel only after preview passes.
 ```
 
 Acceptance:
 
 ```text
 - vieclamgannha.me serves from Vercel.
+- www.vieclamgannha.me redirects or serves the same Vercel frontend deliberately.
 - Frontend deployment is tied to Git commit.
 - No manual rsync frontend deploy remains in production flow.
 ```
@@ -328,6 +401,7 @@ Tasks:
 5. Configure Nginx for api.vieclamgannha.me only.
 6. Add strict CORS for Vercel domains.
 7. Verify /api/health, /api/version, /api/db-health.
+8. Point api.vieclamgannha.me DNS to VPS-2.
 ```
 
 Acceptance:
@@ -336,6 +410,7 @@ Acceptance:
 - api.vieclamgannha.me responds through VPS-2.
 - Backend does not serve frontend files.
 - Backend does not use backend/data DB.
+- Main domain does not point to backend VPS.
 ```
 
 ### Phase 4 - Database migration
@@ -505,6 +580,7 @@ Before editing implementation, complete these audits:
 6. Backend route map: every Express route mounted.
 7. Nginx/domain map before Vercel cutover.
 8. Secrets/env matrix.
+9. DNS provider, nameserver, and record audit before any domain change.
 ```
 
 ## 8. Stop conditions
@@ -517,19 +593,20 @@ Stop work immediately if any of these happens:
 - A migration has no backup and rollback path.
 - A fix touches PWA/OneSignal while debugging core web blank screen.
 - Frontend and backend release SHAs cannot be identified.
+- DNS change would point main domain to a VPS frontend again after Vercel cutover.
 ```
 
 ## 9. Immediate next action
 
 Do not edit product code yet.
 
-Next valid PR/commit should only do documentation cleanup:
+Next valid work should be structure/audit only:
 
 ```text
 1. Keep this canonical plan.
 2. Delete or archive old partial plan files.
 3. Add docs/README.md pointing to this plan.
 4. Add an audit checklist file if needed.
+5. Export the current DNS map before changing records.
+6. Decide whether DNS authority moves fully to Vercel nameservers or stays at current provider with record-level routing.
 ```
-
-After that, start Phase 0 audit and tagging.
