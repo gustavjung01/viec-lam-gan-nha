@@ -7,8 +7,10 @@ import './lib/aiInlineResultModalBridge';
 import './lib/companyLeadWorkflowBridge';
 import './lib/adminLeadWorkflowBridge';
 import './lib/adminLeadHistoryBridge';
+import './lib/adminCompanyActionBridge';
 import { syncAdminPwaMetadata } from './lib/adminPwa';
 import { registerAdminPwaServiceWorker } from './lib/adminPwaRegistration';
+import { initAdminOneSignal } from './lib/adminOneSignal';
 import { RoleProvider } from './contexts/RoleContext';
 
 syncAdminPwaMetadata(window.location.pathname);
@@ -37,4 +39,5 @@ if (!publishableKey) {
   );
 
   registerAdminPwaServiceWorker();
+  initAdminOneSignal();
 }
