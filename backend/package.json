@@ -9,7 +9,9 @@
     "dev": "node --watch server.js",
     "import-fix": "node import-vps-fix.cjs",
     "finance:mount": "node scripts/mount-finance-routes.cjs",
-    "db:test:pg-ro": "node scripts/test-postgres-readonly.mjs"
+    "db:test:pg-ro": "node scripts/test-postgres-readonly.mjs",
+    "db:audit:sqlite": "node scripts/audit-sqlite-schema.mjs",
+    "db:migrate:sqlite-to-pg": "node scripts/migrate-sqlite-to-postgres.mjs"
   },
   "dependencies": {
     "@clerk/backend": "^3.4.14",
