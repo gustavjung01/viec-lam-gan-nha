@@ -8,6 +8,7 @@ const router = express.Router();
 import { openDb } from '../database.js';
 import { userAuth } from '../middleware/userAuth.js';
 import { sendNotification } from '../utils/notification.js';
+import companyDashboardRoutes from './companyDashboard.js';
 
 // Helper: Normalize phone number
 function normalizePhone(phone) {
@@ -46,6 +47,8 @@ function pickCampaignVisibility({ isPublic, ctvEnabled }) {
   if (ctvEnabled) return 'ctv_private';
   return 'draft';
 }
+
+router.use(companyDashboardRoutes);
 
 // ============== PUBLIC API ==============
 
