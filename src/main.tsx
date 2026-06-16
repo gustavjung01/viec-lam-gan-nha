@@ -5,7 +5,6 @@ import App from './App';
 import './index.css';
 import './lib/aiInlineResultModalBridge';
 import './lib/companyLeadWorkflowBridge';
-import './lib/companyDashboardAuthFetchBridge';
 import './lib/adminLeadWorkflowBridge';
 import './lib/adminLeadHistoryBridge';
 import './lib/adminCompanyActionBridge';
