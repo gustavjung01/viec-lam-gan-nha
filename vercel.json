@@ -12,7 +12,7 @@
       "destination": "https://api.vieclamgannha.me/api/:path*"
     },
     {
-      "source": "/((?!api/|assets/|icons/|screenshots/|favicon.ico|manifest.webmanifest|admin-manifest.webmanifest|sw.js|admin-sw.js|build-info.json|robots.txt).*)",
+      "source": "/((?!api/|assets/|icons/|screenshots/|icon-192.png|icon-512.png|maskable-512.png|favicon.ico|manifest.webmanifest|admin-manifest.webmanifest|sw.js|admin-sw.js|build-info.json|robots.txt).*)",
       "destination": "/index.html"
     }
   ]
