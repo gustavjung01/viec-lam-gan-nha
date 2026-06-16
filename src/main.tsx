@@ -5,15 +5,18 @@ import App from './App';
 import './index.css';
 import './lib/aiInlineResultModalBridge';
 import './lib/companyLeadWorkflowBridge';
+import './lib/companyDashboardAuthFetchBridge';
 import './lib/adminLeadWorkflowBridge';
 import './lib/adminLeadHistoryBridge';
 import './lib/adminCompanyActionBridge';
+import { installCompanyDashboardAuthFetchBridge } from './lib/companyDashboardAuthFetchBridge';
 import { registerPwaServiceWorker } from './lib/pwaRegistration';
 import { registerAdminPwaServiceWorker } from './lib/adminPwaRegistration';
 import { syncAdminPwaMetadata } from './lib/adminPwa';
 import { RoleProvider } from './contexts/RoleContext';
 
 syncAdminPwaMetadata();
+installCompanyDashboardAuthFetchBridge();
 
 const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const isAdminRoute = window.location.pathname.startsWith('/admin');
