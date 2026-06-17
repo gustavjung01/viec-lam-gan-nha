@@ -4,10 +4,23 @@ import { userAuth } from '../middleware/userAuth.js';
 
 const router = express.Router();
 
+function normalizeAccountStatus(status) {
+  return String(status || '').trim().toLowerCase();
+}
+
+function isAllowedCompanyStatus(status) {
+  const value = normalizeAccountStatus(status);
+  return value === 'active' || value === 'approved';
+}
+
 async function getOwnedCompany(db, req, requestedCompanyId = '') {
   const company = await db.get('SELECT * FROM companies WHERE clerk_user_id = ?', [req.user.clerkUserId]);
   if (!company) {
     return { error: { status: 403, code: 'COMPANY_NOT_REGISTERED', message: 'Company account is not registered.' } };
+  }
+
+  if (!isAllowedCompanyStatus(company.status)) {
+    return { error: { status: 403, code: 'COMPANY_NOT_APPROVED', message: 'Company account is not approved yet.' } };
   }
 
   const normalizedRequestedId = String(requestedCompanyId || '').trim();
@@ -33,7 +46,7 @@ router.get('/company/campaigns', userAuth, async (req, res) => {
       SELECT id, campaign_code, title, description, job_type, location, province, district,
              salary_text, shift_text, quantity_needed, bounty_amount, ctv_reward_amount,
              platform_fee_amount, qualification_days, max_leads, current_leads, status,
-             visibility, is_public, ctv_enabled, promoted_until, created_at, updated_at
+             visibility, is_public, ctv_enabled, NULL AS promoted_until, created_at, updated_at
       FROM campaigns
       WHERE company_id = ?
       ORDER BY updated_at DESC, created_at DESC
