@@ -1,7 +1,9 @@
 const API_PREFIX = '/api/admin/company/';
 const API_PREFIX_PLURAL = '/api/admin/companies/';
 
-function parseCompanyActionUrl(input: RequestInfo | URL): { companyId: string; action: 'approve' | 'reject' | 'block' } | null {
+type CompanyAction = 'approve' | 'reject' | 'block' | 'unblock';
+
+function parseCompanyActionUrl(input: RequestInfo | URL): { companyId: string; action: CompanyAction } | null {
   const raw = typeof input === 'string'
     ? input
     : input instanceof URL
@@ -16,7 +18,7 @@ function parseCompanyActionUrl(input: RequestInfo | URL): { companyId: string; a
     const parts = path.slice(prefix.length).split('/').filter(Boolean);
     if (parts.length !== 2) continue;
     const [companyId, action] = parts;
-    if (action === 'approve' || action === 'reject' || action === 'block') {
+    if (action === 'approve' || action === 'reject' || action === 'block' || action === 'unblock') {
       return { companyId, action };
     }
   }
@@ -36,8 +38,8 @@ async function readJsonBody(init?: RequestInit): Promise<Record<string, any>> {
   return {};
 }
 
-function actionToStatus(action: 'approve' | 'reject' | 'block') {
-  if (action === 'approve') return 'active';
+function actionToStatus(action: CompanyAction) {
+  if (action === 'approve' || action === 'unblock') return 'active';
   return 'suspended';
 }
 
@@ -54,10 +56,11 @@ if (typeof window !== 'undefined' && !(window as any).__vlgnAdminCompanyActionBr
     }
 
     const body = await readJsonBody(init);
+    const shouldClearReason = match.action === 'approve' || match.action === 'unblock';
     const nextBody = {
       ...body,
       status: actionToStatus(match.action),
-      rejection_reason: body.reason || body.rejection_reason || body.note || undefined,
+      rejection_reason: shouldClearReason ? '' : (body.reason || body.rejection_reason || body.note || undefined),
     };
 
     return originalFetch(`/api/admin/company/${encodeURIComponent(match.companyId)}`, {
