@@ -10,22 +10,43 @@ interface RouteGuardProps {
   fallback?: ReactNode;
 }
 
-// Route permission matrix
-const routePermissions: Record<string, UserRole[]> = {
-  '/ctv': ['ctv', 'admin'],
-  '/company': ['company', 'admin'],
-  '/admin': ['admin'],
+type PendingStatus = {
+  type: 'ctv' | 'company';
+  status: string;
+  reason?: string;
 };
+
+const APPROVED_STATUSES = new Set(['active', 'approved']);
+const PENDING_STATUSES = new Set(['pending', 'submitted', 'reviewing']);
+const BLOCKED_STATUSES = new Set(['rejected', 'blocked', 'suspended', 'banned']);
+
+function normalizeStatus(status: unknown) {
+  return String(status || '').trim().toLowerCase();
+}
+
+function isApprovedStatus(status: unknown) {
+  return APPROVED_STATUSES.has(normalizeStatus(status));
+}
+
+function getAccountGate(type: 'ctv' | 'company', account: any): PendingStatus | null {
+  const status = normalizeStatus(account?.status);
+  if (!account) return null;
+  if (isApprovedStatus(status)) return null;
+  if (PENDING_STATUSES.has(status)) return { type, status: 'pending' };
+  if (BLOCKED_STATUSES.has(status)) {
+    return { type, status: status || 'blocked', reason: account?.rejection_reason || account?.reason || '' };
+  }
+  return { type, status: status || 'pending' };
+}
 
 export function RouteGuard({ children, allowedRoles, fallback }: RouteGuardProps) {
   const { role, setRole } = useRole();
   const { isLoaded, isSignedIn } = useUser();
   const { getToken } = useAuth();
   const location = useLocation();
-  const [pendingStatus, setPendingStatus] = useState<{type: string; status: string} | null>(null);
+  const [pendingStatus, setPendingStatus] = useState<PendingStatus | null>(null);
   const [isChecking, setIsChecking] = useState(true);
 
-  // Check backend account status to detect pending approvals
   useEffect(() => {
     if (!isLoaded) return;
     if (!isSignedIn) {
@@ -46,45 +67,26 @@ export function RouteGuard({ children, allowedRoles, fallback }: RouteGuardProps
         if (res.ok) {
           const data = await res.json();
           if (data.success && data.data) {
-            // Update role based on backend registration
-            // Ưu tiên check theo route đang vào
             const needsCompany = allowedRoles.includes('company');
             const needsCTV = allowedRoles.includes('ctv');
+            const company = data.data.company;
+            const ctv = data.data.ctv;
 
-            if (needsCompany && data.data.company) {
-              const status = data.data.company.status;
+            if (needsCompany && company) {
               setRole('company');
-              if (status === 'pending') {
-                setPendingStatus({ type: 'company', status: 'pending' });
-              } else {
-                setPendingStatus(null);
-              }
-            } else if (needsCTV && data.data.ctv) {
-              const status = data.data.ctv.status;
+              setPendingStatus(getAccountGate('company', company));
+            } else if (needsCTV && ctv) {
               setRole('ctv');
-              if (status === 'pending') {
-                setPendingStatus({ type: 'ctv', status: 'pending' });
-              } else {
-                setPendingStatus(null);
-              }
-            } else if (data.data.ctv) {
-              // Fallback: check CTV trước
-              const status = data.data.ctv.status;
+              setPendingStatus(getAccountGate('ctv', ctv));
+            } else if (ctv) {
               setRole('ctv');
-              if (status === 'pending') {
-                setPendingStatus({ type: 'ctv', status: 'pending' });
-              } else {
-                setPendingStatus(null);
-              }
-            } else if (data.data.company) {
-              // Fallback: check Company
-              const status = data.data.company.status;
+              setPendingStatus(getAccountGate('ctv', ctv));
+            } else if (company) {
               setRole('company');
-              if (status === 'pending') {
-                setPendingStatus({ type: 'company', status: 'pending' });
-              } else {
-                setPendingStatus(null);
-              }
+              setPendingStatus(getAccountGate('company', company));
+            } else {
+              setRole('guest');
+              setPendingStatus(null);
             }
           }
         }
@@ -95,7 +97,7 @@ export function RouteGuard({ children, allowedRoles, fallback }: RouteGuardProps
     };
 
     checkBackendStatus();
-  }, [isLoaded, isSignedIn, getToken, setRole]);
+  }, [isLoaded, isSignedIn, getToken, setRole, allowedRoles]);
 
   const hasPermission = allowedRoles.includes(role);
 
@@ -111,16 +113,24 @@ export function RouteGuard({ children, allowedRoles, fallback }: RouteGuardProps
   }
 
   if (pendingStatus) {
+    const blocked = BLOCKED_STATUSES.has(normalizeStatus(pendingStatus.status));
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
-        <div className="max-w-md rounded-2xl bg-yellow-50 p-8 text-center border border-yellow-200 shadow-lg">
-          <div className="text-6xl mb-4">⏳</div>
-          <h2 className="text-xl font-semibold text-yellow-900 mb-2">Hồ sơ đang chờ duyệt</h2>
-          <p className="text-yellow-700 mb-4">
-            Hồ sơ {pendingStatus.type === 'ctv' ? 'CTV tuyển dụng' : 'công ty tuyển dụng'} của bạn đang chờ admin duyệt.
+        <div className={`max-w-md rounded-2xl p-8 text-center border shadow-lg ${blocked ? 'border-red-200 bg-red-50' : 'border-yellow-200 bg-yellow-50'}`}>
+          <div className="text-6xl mb-4">{blocked ? '🚫' : '⏳'}</div>
+          <h2 className={`text-xl font-semibold mb-2 ${blocked ? 'text-red-900' : 'text-yellow-900'}`}>
+            {blocked ? 'Hồ sơ chưa được duyệt' : 'Hồ sơ đang chờ duyệt'}
+          </h2>
+          <p className={`${blocked ? 'text-red-700' : 'text-yellow-700'} mb-4`}>
+            Hồ sơ {pendingStatus.type === 'ctv' ? 'CTV tuyển dụng' : 'công ty tuyển dụng'} của bạn {blocked ? 'chưa được mở quyền truy cập.' : 'đang chờ admin duyệt.'}
           </p>
-          <p className="text-sm text-yellow-600 mb-6">
-            Thông thường duyệt trong 24h. Cần hỗ trợ, liên hệ: 0909.xxx.xxx
+          {pendingStatus.reason && (
+            <p className={`mb-4 rounded-xl px-3 py-2 text-sm ${blocked ? 'bg-white text-red-700' : 'bg-white text-yellow-700'}`}>
+              Lý do: {pendingStatus.reason}
+            </p>
+          )}
+          <p className={`text-sm mb-6 ${blocked ? 'text-red-600' : 'text-yellow-600'}`}>
+            Cần hỗ trợ, vui lòng liên hệ quản trị viên để kiểm tra hồ sơ.
           </p>
           <a href="/tai-khoan" className="inline-block rounded-xl bg-green-600 px-6 py-3 text-white font-semibold hover:bg-green-700 transition-colors">
             Kiểm tra trạng thái
@@ -135,7 +145,6 @@ export function RouteGuard({ children, allowedRoles, fallback }: RouteGuardProps
       return <>{fallback}</>;
     }
 
-    // Redirect based on role
     if (role === 'guest') {
       return <Navigate to="/" replace state={{ from: location }} />;
     }
