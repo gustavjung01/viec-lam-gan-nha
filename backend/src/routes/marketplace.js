@@ -188,6 +188,90 @@ router.get('/jobs', async (req, res) => {
   }
 });
 
+router.get('/ctv/campaigns', async (req, res) => {
+  let db;
+  try {
+    db = await openDb();
+    const ctvId = String(req.query.ctv_id || '').trim();
+    const rows = await db.all(`
+      SELECT c.id, c.campaign_code, c.title, c.description, c.job_type, c.location,
+             c.province, c.district, c.salary_text, c.shift_text, c.quantity_needed,
+             c.requirements, c.bounty_amount, c.ctv_reward_amount, c.qualification_days,
+             c.max_leads, c.current_leads, c.status, c.end_date,
+             comp.name AS company_name,
+             COALESCE(my.my_leads, 0) AS my_leads
+      FROM campaigns c
+      JOIN companies comp ON comp.id = c.company_id
+      LEFT JOIN (
+        SELECT campaign_id, COUNT(*) AS my_leads
+        FROM lead_submissions
+        WHERE ctv_id = ?
+        GROUP BY campaign_id
+      ) my ON my.campaign_id = c.id
+      WHERE c.status = 'active' AND COALESCE(c.ctv_enabled, 0) = 1
+      ORDER BY datetime(c.updated_at) DESC, c.id DESC
+    `, [ctvId]);
+    await db.close();
+    db = null;
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    try { await db?.close?.(); } catch {}
+    console.error('Fetch CTV campaigns failed:', error);
+    res.json({ success: true, data: [], warning: 'CTV_CAMPAIGNS_UNAVAILABLE' });
+  }
+});
+
+router.get('/ctv/leads', async (req, res) => {
+  let db;
+  try {
+    const ctvId = String(req.query.ctv_id || '').trim();
+    if (!ctvId) return res.status(400).json({ success: false, error: 'MISSING_CTV_ID' });
+    db = await openDb();
+    const rows = await db.all(`
+      SELECT l.id, l.lead_code, l.campaign_id, c.title AS campaign_title,
+             l.status, cand.name AS candidate_name, cand.phone AS candidate_phone,
+             l.submitted_at, c.ctv_reward_amount
+      FROM lead_submissions l
+      JOIN campaigns c ON c.id = l.campaign_id
+      LEFT JOIN candidates cand ON cand.id = l.candidate_id
+      WHERE l.ctv_id = ?
+      ORDER BY datetime(l.submitted_at) DESC, l.id DESC
+    `, [ctvId]);
+    await db.close();
+    db = null;
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    try { await db?.close?.(); } catch {}
+    console.error('Fetch CTV leads failed:', error);
+    res.json({ success: true, data: [], warning: 'CTV_LEADS_UNAVAILABLE' });
+  }
+});
+
+router.get('/ctv/payouts', async (req, res) => {
+  let db;
+  try {
+    const ctvId = String(req.query.ctv_id || '').trim();
+    if (!ctvId) return res.status(400).json({ success: false, error: 'MISSING_CTV_ID' });
+    db = await openDb();
+    const rows = await db.all(`
+      SELECT p.id, p.lead_id, p.payout_amount, p.status, p.created_at,
+             l.lead_code, c.title AS campaign_title
+      FROM ctv_payouts p
+      JOIN lead_submissions l ON l.id = p.lead_id
+      JOIN campaigns c ON c.id = p.campaign_id
+      WHERE p.ctv_id = ?
+      ORDER BY datetime(p.created_at) DESC, p.id DESC
+    `, [ctvId]);
+    await db.close();
+    db = null;
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    try { await db?.close?.(); } catch {}
+    console.error('Fetch CTV payouts failed:', error);
+    res.json({ success: true, data: [], warning: 'CTV_PAYOUTS_UNAVAILABLE' });
+  }
+});
+
 router.post('/company/campaigns', userAuth, async (req, res) => {
   let db;
   try {
