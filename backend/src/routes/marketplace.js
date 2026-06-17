@@ -10,13 +10,6 @@ import { userAuth } from '../middleware/userAuth.js';
 import companyDashboardRoutes from './companyDashboard.js';
 import savedJobsRoutes from './savedJobs.js';
 
-function normalizePhone(phone) {
-  let normalized = String(phone || '').replace(/\D/g, '');
-  if (normalized.startsWith('0')) normalized = '84' + normalized.substring(1);
-  if (normalized && !normalized.startsWith('84')) normalized = '84' + normalized;
-  return normalized;
-}
-
 function generateCode(prefix) {
   const timestamp = Date.now().toString(36).toUpperCase();
   const random = Math.random().toString(36).substring(2, 5).toUpperCase();
@@ -35,6 +28,105 @@ function actionToAccountStatus(action) {
   return null;
 }
 
+function normalizeBoolean(value) {
+  return value === true || value === 1 || value === '1' || value === 'true';
+}
+
+function isAllowedCompanyStatus(status) {
+  const value = String(status || '').trim().toLowerCase();
+  return value === 'active' || value === 'approved';
+}
+
+function pickCampaignVisibility({ isPublic, ctvEnabled }) {
+  if (isPublic) return 'public_candidate';
+  if (ctvEnabled) return 'ctv_private';
+  return 'draft';
+}
+
+async function ensureCampaignPublicColumns(db) {
+  const tableInfo = await db.all(`PRAGMA table_info(campaigns)`);
+  const existing = new Set(tableInfo.map((column) => String(column.name || '').trim()));
+  if (!existing.has('promoted_until')) await db.exec(`ALTER TABLE campaigns ADD COLUMN promoted_until TEXT`);
+  if (!existing.has('is_public')) await db.exec(`ALTER TABLE campaigns ADD COLUMN is_public INTEGER NOT NULL DEFAULT 1`);
+}
+
+async function getOwnedCompany(db, req) {
+  const company = await db.get('SELECT * FROM companies WHERE clerk_user_id = ?', [req.user.clerkUserId]);
+  if (!company) {
+    const error = new Error('Company account is not registered.');
+    error.statusCode = 403;
+    error.code = 'COMPANY_NOT_REGISTERED';
+    throw error;
+  }
+  if (!isAllowedCompanyStatus(company.status)) {
+    const error = new Error('Company account is not approved yet.');
+    error.statusCode = 403;
+    error.code = 'COMPANY_NOT_APPROVED';
+    throw error;
+  }
+  return company;
+}
+
+async function getOwnedCampaign(db, req, campaignId) {
+  const company = await getOwnedCompany(db, req);
+  const campaign = await db.get('SELECT * FROM campaigns WHERE id = ? AND company_id = ?', [campaignId, company.id]);
+  if (!campaign) {
+    const error = new Error('Campaign not found');
+    error.statusCode = 404;
+    error.code = 'CAMPAIGN_NOT_FOUND';
+    throw error;
+  }
+  return { company, campaign };
+}
+
+function buildCampaignPayload(body = {}, companyId, fallback = {}) {
+  const title = String(body.title ?? fallback.title ?? '').trim();
+  if (!title) {
+    const error = new Error('Thiếu tiêu đề chiến dịch.');
+    error.statusCode = 400;
+    error.code = 'MISSING_TITLE';
+    throw error;
+  }
+
+  const bounty = Number(body.bounty_amount ?? fallback.bounty_amount ?? 0);
+  const ctvReward = Number(body.ctv_reward_amount ?? fallback.ctv_reward_amount ?? Math.floor(bounty * 0.8));
+  const platformFee = Math.max(0, bounty - ctvReward);
+  const isPublic = normalizeBoolean(body.is_public ?? fallback.is_public ?? true);
+  const ctvEnabled = normalizeBoolean(body.ctv_enabled ?? fallback.ctv_enabled ?? true);
+
+  if (ctvEnabled && bounty <= 0 && !body.ctv_reward_amount && !fallback.ctv_reward_amount) {
+    const error = new Error('Campaign with CTV enabled requires bounty or ctv_reward_amount');
+    error.statusCode = 400;
+    error.code = 'MISSING_BOUNTY';
+    throw error;
+  }
+
+  const safeStatus = ['draft', 'pending', 'active', 'paused', 'closed'].includes(body.status) ? body.status : (fallback.status || 'pending');
+  const province = body.province ?? fallback.province ?? '';
+  const district = body.district ?? fallback.district ?? '';
+
+  return {
+    company_id: companyId,
+    title,
+    description: body.description ?? fallback.description ?? '',
+    job_type: body.job_type ?? fallback.job_type ?? '',
+    province,
+    district,
+    location: body.location ?? fallback.location ?? [district, province].filter(Boolean).join(', '),
+    salary_text: body.salary_text ?? fallback.salary_text ?? '',
+    shift_text: body.shift_text ?? fallback.shift_text ?? '',
+    quantity_needed: Number(body.quantity_needed ?? fallback.quantity_needed ?? 1),
+    bounty_amount: bounty,
+    ctv_reward_amount: ctvReward,
+    platform_fee_amount: platformFee,
+    qualification_days: Number(body.qualification_days ?? fallback.qualification_days ?? 7),
+    status: safeStatus,
+    visibility: pickCampaignVisibility({ isPublic, ctvEnabled }),
+    is_public: isPublic ? 1 : 0,
+    ctv_enabled: ctvEnabled ? 1 : 0,
+  };
+}
+
 async function updateAccountStatus({ db, table, entityType, id, action, adminId, reason }) {
   const status = actionToAccountStatus(action);
   if (!status) {
@@ -50,10 +142,7 @@ async function updateAccountStatus({ db, table, entityType, id, action, adminId,
 
   const result = await db.run(`
     UPDATE ${table}
-    SET status = ?,
-        rejection_reason = ?,
-        updated_at = datetime('now')
-        ${nowStatusFields}
+    SET status = ?, rejection_reason = ?, updated_at = datetime('now') ${nowStatusFields}
     WHERE id = ?
   `, [status, nextReason, ...statusArgs, id]);
 
@@ -69,19 +158,6 @@ async function updateAccountStatus({ db, table, entityType, id, action, adminId,
   `, [generateCode('AUD'), entityType, id, `${entityType}_${action}`, adminId || 'admin', JSON.stringify({ status, reason: nextReason })]);
 
   return { status, rejection_reason: nextReason };
-}
-
-async function ensureCampaignPublicColumns(db) {
-  const tableInfo = await db.all(`PRAGMA table_info(campaigns)`);
-  const existing = new Set(tableInfo.map((column) => String(column.name || '').trim()));
-  if (!existing.has('promoted_until')) await db.exec(`ALTER TABLE campaigns ADD COLUMN promoted_until TEXT`);
-  if (!existing.has('is_public')) await db.exec(`ALTER TABLE campaigns ADD COLUMN is_public INTEGER NOT NULL DEFAULT 1`);
-}
-
-function pickCampaignVisibility({ isPublic, ctvEnabled }) {
-  if (isPublic) return 'public_candidate';
-  if (ctvEnabled) return 'ctv_private';
-  return 'draft';
 }
 
 router.use(companyDashboardRoutes);
@@ -116,66 +192,152 @@ router.post('/company/campaigns', userAuth, async (req, res) => {
   let db;
   try {
     db = await openDb();
-    const clerkUserId = req.user.clerkUserId;
-    const company = await db.get('SELECT * FROM companies WHERE clerk_user_id = ?', [clerkUserId]);
-
-    if (!company) {
-      await db.close();
-      db = null;
-      return res.status(403).json({ success: false, error: 'COMPANY_NOT_REGISTERED', message: 'You have not registered a company profile.' });
-    }
-
-    if (company.status !== 'approved' && company.status !== 'active') {
-      await db.close();
-      db = null;
-      return res.status(403).json({ success: false, error: 'COMPANY_NOT_APPROVED', message: 'Your company profile is not approved yet.' });
-    }
-
+    const company = await getOwnedCompany(db, req);
     if (company.plan_code === 'free' && Number(company.used_job_posts_count || 0) >= Number(company.free_job_posts_limit || 0)) {
-      await db.close();
-      db = null;
       return res.status(403).json({ success: false, error: 'QUOTA_EXCEEDED', message: 'Công ty đã dùng hết số tin đăng miễn phí.' });
     }
 
-    const { title, description, job_type, province, district, location, salary_text, shift_text, quantity_needed, bounty_amount, qualification_days, is_public, ctv_enabled, status } = req.body;
-    if (!title || !String(title).trim()) {
-      await db.close();
-      db = null;
-      return res.status(400).json({ success: false, error: 'MISSING_TITLE', message: 'Thiếu tiêu đề chiến dịch.' });
-    }
-
-    const finalBounty = Number(bounty_amount || 0);
-    const finalCtvReward = Number(req.body.ctv_reward_amount) || Math.floor(finalBounty * 0.8);
-    const finalPlatformFee = Math.max(0, finalBounty - finalCtvReward);
-    const publicFlag = is_public === true || is_public === 1 || is_public === '1';
-    const ctvFlag = ctv_enabled === true || ctv_enabled === 1 || ctv_enabled === '1';
-
-    if (ctvFlag && finalBounty <= 0 && !req.body.ctv_reward_amount) {
-      await db.close();
-      db = null;
-      return res.status(400).json({ success: false, error: 'MISSING_BOUNTY', message: 'Campaign with CTV enabled requires bounty or ctv_reward_amount' });
-    }
-
+    const data = buildCampaignPayload(req.body, company.id);
     const campaignId = `CP${Date.now()}`;
     const campaignCode = generateCode('CMP');
     const now = new Date().toISOString();
-    const visibility = pickCampaignVisibility({ isPublic: publicFlag, ctvEnabled: ctvFlag });
-    const safeStatus = ['draft', 'pending', 'active', 'paused', 'closed'].includes(status) ? status : 'pending';
-
-    const columns = ['id', 'campaign_code', 'company_id', 'title', 'description', 'job_type', 'province', 'district', 'location', 'salary_text', 'shift_text', 'quantity_needed', 'bounty_amount', 'ctv_reward_amount', 'platform_fee_amount', 'qualification_days', 'status', 'visibility', 'is_public', 'ctv_enabled', 'created_at', 'updated_at'];
-    const values = [campaignId, campaignCode, company.id, String(title).trim(), description || '', job_type || '', province || '', district || '', location || '', salary_text || '', shift_text || '', Number(quantity_needed || 1), finalBounty, finalCtvReward, finalPlatformFee, Number(qualification_days || 7), safeStatus, visibility, publicFlag ? 1 : 0, ctvFlag ? 1 : 0, now, now];
-
-    await db.run(`INSERT INTO campaigns (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`, values);
+    await db.run(`
+      INSERT INTO campaigns (
+        id, campaign_code, company_id, title, description, job_type, province, district, location,
+        salary_text, shift_text, quantity_needed, bounty_amount, ctv_reward_amount, platform_fee_amount,
+        qualification_days, status, visibility, is_public, ctv_enabled, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      campaignId, campaignCode, data.company_id, data.title, data.description, data.job_type, data.province,
+      data.district, data.location, data.salary_text, data.shift_text, data.quantity_needed, data.bounty_amount,
+      data.ctv_reward_amount, data.platform_fee_amount, data.qualification_days, data.status, data.visibility,
+      data.is_public, data.ctv_enabled, now, now,
+    ]);
     await db.run('UPDATE companies SET used_job_posts_count = COALESCE(used_job_posts_count, 0) + 1 WHERE id = ?', [company.id]);
-    await db.run(`INSERT INTO audit_logs (id, entity_type, entity_id, action, actor_role, actor_id, details) VALUES (?, 'campaign', ?, 'created', 'company', ?, ?)`, [generateCode('AUD'), campaignId, company.id, JSON.stringify({ title, bounty_amount, visibility, status: safeStatus })]);
-
+    await db.run(`INSERT INTO audit_logs (id, entity_type, entity_id, action, actor_role, actor_id, details) VALUES (?, 'campaign', ?, 'created', 'company', ?, ?)`, [generateCode('AUD'), campaignId, company.id, JSON.stringify({ title: data.title, bounty_amount: data.bounty_amount, visibility: data.visibility, status: data.status })]);
     await db.close();
     db = null;
-    return res.status(201).json({ success: true, data: { id: campaignId, campaign_code: campaignCode, title, status: safeStatus } });
+    res.status(201).json({ success: true, data: { id: campaignId, campaign_code: campaignCode, title: data.title, status: data.status } });
   } catch (error) {
     try { await db?.close?.(); } catch {}
     console.error('Create campaign failed:', error);
-    return res.status(500).json({ success: false, error: error.message });
+    res.status(error?.statusCode || 500).json({ success: false, error: error.code || error.message, message: error.message });
+  }
+});
+
+router.put('/company/campaigns/:id', userAuth, async (req, res) => {
+  let db;
+  try {
+    db = await openDb();
+    const { company, campaign } = await getOwnedCampaign(db, req, req.params.id);
+    const data = buildCampaignPayload(req.body, company.id, campaign);
+    await db.run(`
+      UPDATE campaigns
+      SET title = ?, description = ?, job_type = ?, province = ?, district = ?, location = ?,
+          salary_text = ?, shift_text = ?, quantity_needed = ?, bounty_amount = ?, ctv_reward_amount = ?,
+          platform_fee_amount = ?, qualification_days = ?, status = ?, visibility = ?, is_public = ?,
+          ctv_enabled = ?, updated_at = datetime('now')
+      WHERE id = ? AND company_id = ?
+    `, [
+      data.title, data.description, data.job_type, data.province, data.district, data.location,
+      data.salary_text, data.shift_text, data.quantity_needed, data.bounty_amount, data.ctv_reward_amount,
+      data.platform_fee_amount, data.qualification_days, data.status, data.visibility, data.is_public,
+      data.ctv_enabled, req.params.id, company.id,
+    ]);
+    await db.run(`INSERT INTO audit_logs (id, entity_type, entity_id, action, actor_role, actor_id, details) VALUES (?, 'campaign', ?, 'updated', 'company', ?, ?)`, [generateCode('AUD'), req.params.id, company.id, JSON.stringify({ title: data.title, status: data.status })]);
+    const updated = await db.get('SELECT * FROM campaigns WHERE id = ?', [req.params.id]);
+    await db.close();
+    db = null;
+    res.json({ success: true, data: updated });
+  } catch (error) {
+    try { await db?.close?.(); } catch {}
+    console.error('Update campaign failed:', error);
+    res.status(error?.statusCode || 500).json({ success: false, error: error.code || error.message, message: error.message });
+  }
+});
+
+router.delete('/company/campaigns/:id', userAuth, async (req, res) => {
+  let db;
+  try {
+    db = await openDb();
+    const { company } = await getOwnedCampaign(db, req, req.params.id);
+    const leadCount = await db.get('SELECT COUNT(*) AS count FROM lead_submissions WHERE campaign_id = ?', [req.params.id]);
+    if (Number(leadCount?.count || 0) > 0) {
+      return res.status(409).json({ success: false, error: 'CAMPAIGN_HAS_LEADS', message: 'Chiến dịch đã có lead, không thể xóa. Hãy tạm dừng hoặc đóng chiến dịch.' });
+    }
+    await db.run('DELETE FROM campaigns WHERE id = ? AND company_id = ?', [req.params.id, company.id]);
+    await db.run(`INSERT INTO audit_logs (id, entity_type, entity_id, action, actor_role, actor_id, details) VALUES (?, 'campaign', ?, 'deleted', 'company', ?, ?)`, [generateCode('AUD'), req.params.id, company.id, JSON.stringify({})]);
+    await db.close();
+    db = null;
+    res.json({ success: true, deletedCount: 1 });
+  } catch (error) {
+    try { await db?.close?.(); } catch {}
+    console.error('Delete campaign failed:', error);
+    res.status(error?.statusCode || 500).json({ success: false, error: error.code || error.message, message: error.message });
+  }
+});
+
+router.post('/company/campaigns/:id/push', userAuth, async (req, res) => {
+  let db;
+  try {
+    db = await openDb();
+    const { company } = await getOwnedCampaign(db, req, req.params.id);
+    const used = Number(company.used_push_count || 0);
+    const limit = Number(company.weekly_push_limit || 0);
+    if (limit > 0 && used >= limit) {
+      return res.status(403).json({ success: false, error: 'PUSH_QUOTA_EXCEEDED', message: 'Công ty đã dùng hết lượt đẩy tin trong tuần.' });
+    }
+    const promotedUntil = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    await db.run('UPDATE campaigns SET promoted_until = ?, updated_at = datetime(\'now\') WHERE id = ? AND company_id = ?', [promotedUntil, req.params.id, company.id]);
+    await db.run('UPDATE companies SET used_push_count = COALESCE(used_push_count, 0) + 1 WHERE id = ?', [company.id]);
+    await db.run(`INSERT INTO audit_logs (id, entity_type, entity_id, action, actor_role, actor_id, details) VALUES (?, 'campaign', ?, 'pushed', 'company', ?, ?)`, [generateCode('AUD'), req.params.id, company.id, JSON.stringify({ promoted_until: promotedUntil })]);
+    await db.close();
+    db = null;
+    res.json({ success: true, data: { promoted_until: promotedUntil } });
+  } catch (error) {
+    try { await db?.close?.(); } catch {}
+    console.error('Push campaign failed:', error);
+    res.status(error?.statusCode || 500).json({ success: false, error: error.code || error.message, message: error.message });
+  }
+});
+
+router.post('/company/leads/:id/claim', userAuth, async (req, res) => {
+  let db;
+  try {
+    db = await openDb();
+    const company = await getOwnedCompany(db, req);
+    const lead = await db.get(`
+      SELECT l.*, c.company_id, c.bounty_amount
+      FROM lead_submissions l
+      JOIN campaigns c ON c.id = l.campaign_id
+      WHERE l.id = ? OR l.lead_code = ?
+      LIMIT 1
+    `, [req.params.id, req.params.id]);
+    if (!lead) return res.status(404).json({ success: false, error: 'LEAD_NOT_FOUND', message: 'Không tìm thấy lead.' });
+    if (lead.company_id !== company.id) return res.status(403).json({ success: false, error: 'LEAD_FORBIDDEN', message: 'Lead không thuộc công ty này.' });
+    if (lead.claimed_by_company_id && lead.claimed_by_company_id !== company.id) return res.status(409).json({ success: false, error: 'LEAD_ALREADY_CLAIMED', message: 'Lead đã được nhận bởi công ty khác.' });
+
+    const bounty = Number(lead.bounty_amount || 0);
+    const balance = Number(company.wallet_balance || 0);
+    const creditLimit = Number(company.credit_limit || 0);
+    if (!lead.claimed_by_company_id && balance + creditLimit < bounty) {
+      return res.status(402).json({ success: false, error: 'INSUFFICIENT_BALANCE', message: 'Số dư ví không đủ để nhận lead.' });
+    }
+
+    if (!lead.claimed_by_company_id) {
+      const newBalance = balance - bounty;
+      await db.run('UPDATE companies SET wallet_balance = ?, updated_at = datetime(\'now\') WHERE id = ?', [newBalance, company.id]);
+      await db.run('UPDATE lead_submissions SET status = ?, is_anonymous = 0, claimed_by_company_id = ?, claimed_at = datetime(\'now\') WHERE id = ?', ['claimed', company.id, lead.id]);
+      await db.run(`INSERT INTO wallet_transactions (id, company_id, transaction_type, amount, balance_after, reference_id, description) VALUES (?, ?, 'lead_claim', ?, ?, ?, ?)`, [generateCode('WAL'), company.id, -bounty, newBalance, lead.id, 'Company claimed lead']);
+    }
+
+    await db.close();
+    db = null;
+    res.json({ success: true, data: { bounty_paid: lead.claimed_by_company_id ? 0 : bounty } });
+  } catch (error) {
+    try { await db?.close?.(); } catch {}
+    console.error('Claim lead failed:', error);
+    res.status(error?.statusCode || 500).json({ success: false, error: error.code || error.message, message: error.message });
   }
 });
 
