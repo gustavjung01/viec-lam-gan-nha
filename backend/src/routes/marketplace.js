@@ -29,6 +29,63 @@ function generateCode(prefix) {
   return `${prefix}${timestamp}${random}`;
 }
 
+function normalizeAdminAction(action) {
+  const value = String(action || '').trim().toLowerCase();
+  if (['approve', 'reject', 'block', 'unblock'].includes(value)) return value;
+  return '';
+}
+
+function actionToAccountStatus(action) {
+  if (action === 'approve' || action === 'unblock') return 'active';
+  if (action === 'block' || action === 'reject') return 'suspended';
+  return null;
+}
+
+async function updateAccountStatus({ db, table, entityType, id, action, adminId, reason }) {
+  const status = actionToAccountStatus(action);
+  if (!status) {
+    const error = new Error('Invalid account action');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const clearReason = action === 'approve' || action === 'unblock';
+  const nextReason = clearReason ? null : (String(reason || '').trim() || null);
+  const nowStatusFields = status === 'active'
+    ? ', approved_at = datetime(\'now\'), approved_by = ?'
+    : '';
+  const statusArgs = status === 'active' ? [adminId || 'admin'] : [];
+
+  const result = await db.run(`
+    UPDATE ${table}
+    SET status = ?,
+        rejection_reason = ?,
+        updated_at = datetime('now')
+        ${nowStatusFields}
+    WHERE id = ?
+  `, [status, nextReason, ...statusArgs, id]);
+
+  if (!Number(result?.changes || 0)) {
+    const error = new Error('Account not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  await db.run(`
+    INSERT INTO audit_logs (id, entity_type, entity_id, action, actor_role, actor_id, details)
+    VALUES (?, ?, ?, ?, 'admin', ?, ?)
+  `, [
+    generateCode('AUD'),
+    entityType,
+    id,
+    `${entityType}_${action}`,
+    adminId || 'admin',
+    JSON.stringify({ status, reason: nextReason }),
+  ]);
+
+  return { status, rejection_reason: nextReason };
+}
+
 async function ensureCampaignPublicColumns(db) {
   const tableInfo = await db.all(`PRAGMA table_info(campaigns)`);
   const existing = new Set(tableInfo.map((column) => String(column.name || '').trim()));
@@ -194,6 +251,58 @@ router.post('/company/campaigns', userAuth, async (req, res) => {
     try { await db?.close?.(); } catch {}
     console.error('Create campaign failed:', error);
     return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/admin/ctv/:id/:action - Admin approve/reject/block/unblock CTV
+router.post('/admin/ctv/:id/:action', async (req, res) => {
+  let db;
+  try {
+    const action = normalizeAdminAction(req.params.action);
+    if (!action) return res.status(400).json({ success: false, error: 'INVALID_ACTION' });
+    db = await openDb();
+    const result = await updateAccountStatus({
+      db,
+      table: 'ctv_accounts',
+      entityType: 'ctv_accounts',
+      id: req.params.id,
+      action,
+      adminId: req.body?.admin_id,
+      reason: req.body?.reason || req.body?.rejection_reason || req.body?.note,
+    });
+    await db.close();
+    db = null;
+    res.json({ success: true, message: 'CTV account updated', data: result });
+  } catch (error) {
+    try { await db?.close?.(); } catch {}
+    const status = error?.statusCode || 500;
+    res.status(status).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/admin/company/:id/:action - Admin approve/reject/block/unblock company
+router.post('/admin/company/:id/:action', async (req, res) => {
+  let db;
+  try {
+    const action = normalizeAdminAction(req.params.action);
+    if (!action) return res.status(400).json({ success: false, error: 'INVALID_ACTION' });
+    db = await openDb();
+    const result = await updateAccountStatus({
+      db,
+      table: 'companies',
+      entityType: 'companies',
+      id: req.params.id,
+      action,
+      adminId: req.body?.admin_id,
+      reason: req.body?.reason || req.body?.rejection_reason || req.body?.note,
+    });
+    await db.close();
+    db = null;
+    res.json({ success: true, message: 'Company account updated', data: result });
+  } catch (error) {
+    try { await db?.close?.(); } catch {}
+    const status = error?.statusCode || 500;
+    res.status(status).json({ success: false, error: error.message });
   }
 });
 
