@@ -68,7 +68,7 @@ function AppContent() {
         <Route path="/admin/reports" element={<AdminConsolePage />} />
       </Routes>
       {!isAdminRoute && <Footer />}
-      {!isAdminRoute && <InstallAppBanner />}
+      <InstallAppBanner />
       <UpdateBanner />
       {!hideChatbot && <Chatbot />}
     </div>
